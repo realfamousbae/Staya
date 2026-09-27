@@ -16,3 +16,15 @@ name = "staya_core"
 
 [dependencies]
 uniffi = { workspace = true }
+staya-proto = { path = "../proto" }
+vodozemac = { workspace = true }
+rusqlite = { workspace = true }
+chacha20poly1305 = { workspace = true }
+zeroize = { workspace = true }
+getrandom = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3.27.0"
