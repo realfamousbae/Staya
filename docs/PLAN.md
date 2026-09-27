@@ -136,7 +136,7 @@ MVP — это минимум, при котором Staya уже можно п�
 - [x] 0.1 Монорепозиторий, LICENSE (AGPL-3.0), README, SECURITY.md, CLAUDE.md, этот план
 - [x] 0.2 Окружение: Rust-таргеты iOS/Android, `cargo-ndk`, `cargo-deny`, минимальный Android SDK без Android Studio (platform-tools, android-37.0, build-tools 36.0.0, NDK 29.0.14206865), JDK 21
 - [x] 0.3 Каркасы приложений: SwiftUI (iOS 18, проект Xcode с синхронизируемой папкой, без генераторов) и Compose (minSdk 29, compileSdk/targetSdk 37, AGP 9.4, Gradle 9.8). Фоновая геолокация — это ключ `UIBackgroundModes` в Info.plist без entitlement, Personal Team её не ограничивает; подтвердить установкой на iPhone в 0.4
-- [ ] 0.4 Конвейер UniFFI: `core_version()` из Rust в обоих приложениях; `scripts/build-ios-core.sh`, `scripts/build-android-core.sh`
+- [x] 0.4 Конвейер UniFFI 0.32: `core_version()` из Rust в обоих приложениях; `scripts/build-ios-core.sh` (XCFramework → Swift Package `ios/StayaCore`), `scripts/build-android-core.sh` (cargo-ndk, только arm64-v8a; вызывается из Gradle-модуля `:core`). Проверено сборкой и запуском Swift-привязок на macOS; запуск на устройстве — когда будет iOS-платформа / эмулятор
 - [ ] 0.5 CI: `rust` (fmt, clippy `-D warnings`, test, `cargo deny check`), `ios` (xcframework + сборка под симулятор), `android` (cargo-ndk + `assembleDebug` + lint); Actions закреплены по SHA
 - [ ] 0.6 Черновики `docs/protocol.md` и `docs/threat-model.md`
 
@@ -204,7 +204,8 @@ MVP — это минимум, при котором Staya уже можно п�
 
 ### Проверить по ходу
 
-- Установка на iPhone: Xcode 26 требует компонент iOS-платформы (~8 ГБ, Settings → Components) — спросить перед скачиванием (0.4)
+- Установка на iPhone: Xcode 26 требует компонент iOS-платформы (~8 ГБ); iPhone автора на iOS 27 требует Xcode 27, а тот — macOS Tahoe 26.6+ (сейчас Sequoia 15.7.9). Решить до этапа 1
+- Старый Poco: если окажется 32-битным (armeabi-v7a), добавить таргет в `scripts/build-android-core.sh` и `abiFilters`
 - Перезапуск iOS-приложения после принудительного закрытия при SLC и `CLServiceSession` (1.4)
 - Запуск location foreground service после перезагрузки на Android 14–16 (1.3)
 - Переиспользование ключа Caddy для SPKI pinning (3.8)

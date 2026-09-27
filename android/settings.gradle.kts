@@ -15,4 +15,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "Staya"
-include(":app")
+include(":app", ":core")

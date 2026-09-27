@@ -8,3 +8,11 @@ publish.workspace = true
 
 [lints]
 workspace = true
+
+[lib]
+# staticlib — для iOS (XCFramework), cdylib — для Android (.so) и генерации привязок.
+crate-type = ["lib", "staticlib", "cdylib"]
+name = "staya_core"
+
+[dependencies]
+uniffi = { workspace = true }

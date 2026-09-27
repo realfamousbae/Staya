@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <!-- ChromeOS не целевая платформа; ядро собирается только под arm64. -->
+    <issue id="ChromeOsAbiSupport" severity="ignore" />
+</lint>

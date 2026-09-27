@@ -28,5 +28,10 @@
 - iOS: сборка без подписи — `xcodebuild -project ios/Staya.xcodeproj -target Staya -sdk iphonesimulator CODE_SIGNING_ALLOWED=NO build` (схемы с -destination требуют скачанной iOS-платформы). DEVELOPMENT_TEAM — в ios/Config/Local.xcconfig (не в git).
 - iOS: Personal Team (нет платного Apple Developer Program) — без APNs, TestFlight, universal links.
 
+## Сборка ядра для приложений
+- iOS: `scripts/build-ios-core.sh` → ios/StayaCore/StayaCoreFFI.xcframework + Swift-привязки (не в git). Запускать перед сборкой Xcode после изменений в core/.
+- Android: `./gradlew assembleDebug` сам вызывает `scripts/build-android-core.sh` (нужен `source scripts/env.sh`). Только arm64-v8a.
+- Экспорт в Swift/Kotlin — через `#[uniffi::export]` (proc-macros, без UDL).
+
 ## Проверки перед коммитом
 - cargo fmt --check, cargo clippy --all-targets -- -D warnings, cargo test, cargo deny check
