@@ -137,7 +137,7 @@ MVP — это минимум, при котором Staya уже можно п�
 - [x] 0.2 Окружение: Rust-таргеты iOS/Android, `cargo-ndk`, `cargo-deny`, минимальный Android SDK без Android Studio (platform-tools, android-37.0, build-tools 36.0.0, NDK 29.0.14206865), JDK 21
 - [x] 0.3 Каркасы приложений: SwiftUI (iOS 18, проект Xcode с синхронизируемой папкой, без генераторов) и Compose (minSdk 29, compileSdk/targetSdk 37, AGP 9.4, Gradle 9.8). Фоновая геолокация — это ключ `UIBackgroundModes` в Info.plist без entitlement, Personal Team её не ограничивает; подтвердить установкой на iPhone в 0.4
 - [x] 0.4 Конвейер UniFFI 0.32: `core_version()` из Rust в обоих приложениях; `scripts/build-ios-core.sh` (XCFramework → Swift Package `ios/StayaCore`), `scripts/build-android-core.sh` (cargo-ndk, только arm64-v8a; вызывается из Gradle-модуля `:core`). Проверено сборкой и запуском Swift-привязок на macOS; запуск на устройстве — когда будет iOS-платформа / эмулятор
-- [ ] 0.5 CI: `rust` (fmt, clippy `-D warnings`, test, `cargo deny check`), `ios` (xcframework + сборка под симулятор), `android` (cargo-ndk + `assembleDebug` + lint); Actions закреплены по SHA
+- [x] 0.5 CI: `rust` (fmt, clippy `-D warnings`, test), `deny` (`cargo deny check`), `ios` (xcframework, запуск Swift-привязок на macOS, сборка под симулятор), `android` (cargo-ndk, `assembleDebug`, lint, JVM-тест Kotlin-привязок); Actions закреплены по SHA, Dependabot раз в неделю
 - [x] 0.6 Черновики `docs/protocol.md` и `docs/threat-model.md` (v0; точные форматы — в 2.1)
 
 Готово, когда: CI зелёный на всех трёх джобах, оба приложения показывают строку из Rust.

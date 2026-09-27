@@ -6,4 +6,8 @@ TARGETED_DEVICE_FAMILY = 1
 SWIFT_VERSION = 6.0
 CODE_SIGN_STYLE = Automatic
 
+
+// Ядро собирается только под arm64 (Apple Silicon); Intel-симуляторы не поддерживаем.
+EXCLUDED_ARCHS[sdk=iphonesimulator*] = x86_64
+
 #include? "Local.xcconfig"

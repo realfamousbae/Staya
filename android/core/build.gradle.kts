@@ -43,7 +43,25 @@ android {
 
 tasks.named("preBuild") { dependsOn(buildRustCore) }
 
+// JVM-тесты привязок: ядро собирается под сам компьютер (macOS/Linux) и грузится через JNA.
+val repoRoot = rootProject.layout.projectDirectory.dir("..")
+val buildHostCore by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Собирает Rust-ядро под хост для JVM-тестов"
+    workingDir(repoRoot)
+    commandLine("cargo", "build", "-p", "staya-core", "--lib")
+}
+
+tasks.withType<Test>().configureEach {
+    dependsOn(buildHostCore)
+    systemProperty("jna.library.path", repoRoot.dir("target/debug").asFile.absolutePath)
+}
+
 dependencies {
     // Нужна Kotlin-привязкам UniFFI для вызова нативной библиотеки.
     implementation(libs.jna) { artifact { type = "aar" } }
+
+    // Обычный jar JNA содержит нативный диспетчер для macOS/Linux — нужен для JVM-тестов.
+    testImplementation(libs.jna)
+    testImplementation(libs.junit)
 }
