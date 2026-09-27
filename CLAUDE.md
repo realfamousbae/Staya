@@ -35,3 +35,5 @@
 
 ## Проверки перед коммитом
 - cargo fmt --check, cargo clippy --all-targets -- -D warnings, cargo test, cargo deny check
+- Android: `./gradlew assembleDebug lintDebug testDebugUnitTest` (lint — 0 замечаний)
+- CI (.github/workflows/ci.yml): новые Actions закреплять по SHA коммита с комментарием версии
