@@ -147,14 +147,14 @@ fn ghost_and_freeze() {
         (p.kind, p.lat_e7, p.lon_e7),
         (LocationKind::Frozen, HOME.lat_e7, HOME.lon_e7)
     );
-    // Время — момент отправки, иначе повторная заморозка отсеклась бы как повтор.
-    assert_eq!(p.timestamp, T0 + 100);
+    // Заморозка показывает исходное время замера; повторные пакеты всё равно принимаются.
+    assert_eq!(p.timestamp, HOME.timestamp);
     send(&mut alice, &mut server, None, T0 + 200);
     assert_eq!(
         last_location(&bob.fetch(&mut server, T0 + 201), alice.id())
             .unwrap()
-            .timestamp,
-        T0 + 200
+            .kind,
+        LocationKind::Frozen
     );
 
     alice.friends.set_frozen(&alice.store, None).unwrap();
@@ -218,7 +218,7 @@ fn replayed_and_rolled_back_packets_are_rejected() {
     let (from, data) = &old_packet[0];
     let h = bob
         .friends
-        .handle_location(&bob.store, *from, data, later + 2)
+        .handle_location(&bob.store, *from, data)
         .unwrap();
     assert!(matches!(h.events[..], [Event::Dropped { .. }]));
 }
@@ -237,7 +237,7 @@ fn packet_arriving_before_its_key_is_held_until_the_key_comes() {
     // WebSocket доставил пакет раньше SessionShare.
     let h = bob
         .friends
-        .handle_location(&bob.store, alice.id(), &packet[0].data, later)
+        .handle_location(&bob.store, alice.id(), &packet[0].data)
         .unwrap();
     assert!(matches!(h.events[..], [Event::Dropped { .. }]));
     // Отложенный пакет переживает перезапуск.
@@ -264,7 +264,7 @@ fn packet_is_attributed_by_session_not_by_server_label() {
     // Сервер выдаёт пакет Алисы за пакет Кэрол.
     let h = bob
         .friends
-        .handle_location(&bob.store, carol.id(), &outs[0].data, T0 + 6)
+        .handle_location(&bob.store, carol.id(), &outs[0].data)
         .unwrap();
     assert!(matches!(h.events[0], Event::LocationUpdated { friend, .. } if friend == alice.id()));
 }
@@ -276,7 +276,7 @@ fn garbage_location_envelopes_are_dropped() {
     for data in [vec![], vec![0; 160], vec![0xFF; 160], vec![1; 512]] {
         let h = bob
             .friends
-            .handle_location(&bob.store, stranger, &data, T0)
+            .handle_location(&bob.store, stranger, &data)
             .unwrap();
         assert!(matches!(h.events[..], [Event::Dropped { .. }]));
     }
@@ -292,4 +292,156 @@ fn debug_output_never_contains_coordinates() {
         !dump.contains("557558000") && !dump.contains("376173000"),
         "{dump}"
     );
+}
+
+#[test]
+fn refetching_the_same_slot_is_a_duplicate_and_is_not_held() {
+    let (mut alice, mut bob, mut server) = setup();
+    send(&mut alice, &mut server, Some(HOME), T0 + 5);
+    assert!(last_location(&bob.fetch(&mut server, T0 + 6), alice.id()).is_some());
+    // Сервер отдаёт все слоты при каждой выборке: второй раз — тот же пакет.
+    let ev = bob.fetch(&mut server, T0 + 7);
+    assert_eq!(
+        ev,
+        vec![Event::Dropped {
+            reason: "location already seen"
+        }]
+    );
+    assert_eq!(bob.friends.held_packet_count(), 0);
+}
+
+#[test]
+fn packets_under_unknown_hints_are_not_held() {
+    let (mut alice, _, _) = setup();
+    let mut stranger = Device::new();
+    let mut server = FakeServer::default();
+    let mut other = Device::new();
+    befriend(&mut stranger, &mut other, &mut server);
+    let outs = stranger
+        .friends
+        .prepare_location_update(&stranger.store, Some(HOME), T0)
+        .unwrap();
+    for i in 0..10u8 {
+        let hint = AccountId([i; 16]);
+        alice
+            .friends
+            .handle_location(&alice.store, hint, &outs[0].data)
+            .unwrap();
+    }
+    assert_eq!(alice.friends.held_packet_count(), 0);
+}
+
+/// После снятия режима друг сразу видит позицию, даже если замер старше
+/// последнего пакета (кэшированная точка при SLC).
+fn assert_next_exact_is_shown(
+    alice: &mut Device,
+    bob: &mut Device,
+    server: &mut FakeServer,
+    now: i64,
+) {
+    let cached_fix = Location {
+        timestamp: T0 + 1,
+        ..HOME
+    };
+    send(alice, server, Some(cached_fix), now);
+    let p = last_location(&bob.fetch(server, now + 1), alice.id()).expect("location shown");
+    assert_eq!((p.kind, p.timestamp), (LocationKind::Exact, T0 + 1));
+}
+
+#[test]
+fn leaving_freeze_ghost_or_hidden_shows_the_next_fix_immediately() {
+    let (mut alice, mut bob, mut server) = setup();
+
+    alice
+        .friends
+        .set_frozen(
+            &alice.store,
+            Some(Location {
+                timestamp: T0 + 50,
+                ..HOME
+            }),
+        )
+        .unwrap();
+    send(&mut alice, &mut server, None, T0 + 100);
+    bob.fetch(&mut server, T0 + 101);
+    alice.friends.set_frozen(&alice.store, None).unwrap();
+    assert_next_exact_is_shown(&mut alice, &mut bob, &mut server, T0 + 102);
+
+    alice.friends.set_ghost(&alice.store, true).unwrap();
+    send(&mut alice, &mut server, None, T0 + 200);
+    bob.fetch(&mut server, T0 + 201);
+    alice.friends.set_ghost(&alice.store, false).unwrap();
+    assert_next_exact_is_shown(&mut alice, &mut bob, &mut server, T0 + 202);
+
+    alice
+        .friends
+        .set_precision(&alice.store, &bob.id(), Precision::Hidden)
+        .unwrap();
+    send(&mut alice, &mut server, Some(HOME), T0 + 300);
+    bob.fetch(&mut server, T0 + 301);
+    alice
+        .friends
+        .set_precision(&alice.store, &bob.id(), Precision::Exact)
+        .unwrap();
+    assert_next_exact_is_shown(&mut alice, &mut bob, &mut server, T0 + 302);
+}
+
+#[test]
+fn two_sends_in_the_same_second_keep_the_later_state() {
+    let (mut alice, mut bob, mut server) = setup();
+    send(&mut alice, &mut server, Some(HOME), T0 + 5);
+    bob.fetch(&mut server, T0 + 5);
+    alice.friends.set_ghost(&alice.store, true).unwrap();
+    send(&mut alice, &mut server, None, T0 + 5);
+    let p = last_location(&bob.fetch(&mut server, T0 + 5), alice.id()).unwrap();
+    assert_eq!(p.kind, LocationKind::Hidden);
+}
+
+#[test]
+fn packet_before_friend_accept_is_held_and_then_shown() {
+    // Алиса (пригласившая) сразу шлёт позицию; у Боба дружба ещё не подтверждена.
+    let mut server = FakeServer::default();
+    let (mut alice, mut bob) = (Device::new(), Device::new());
+    server.publish(&mut alice, T0);
+    let invite = alice
+        .friends
+        .create_invite(
+            &alice.store,
+            &alice.account.identity(),
+            InviteMethod::Qr,
+            T0,
+        )
+        .unwrap();
+    let req = bob
+        .friends
+        .accept_invite(
+            &bob.store,
+            &bob.account,
+            &invite,
+            &server.claim(alice.id()),
+            T0,
+        )
+        .unwrap();
+    server.send(bob.id(), req);
+    alice.sync(&mut server, T0 + 1);
+    let outs = alice
+        .friends
+        .prepare_location_update(&alice.store, Some(HOME), T0 + 2)
+        .unwrap();
+    let packet = outs
+        .into_iter()
+        .find(|o| o.kind == EnvelopeKind::Location)
+        .unwrap();
+    // WebSocket доставил пакет раньше FriendAccept.
+    bob.friends
+        .handle_location(&bob.store, alice.id(), &packet.data)
+        .unwrap();
+    assert_eq!(bob.friends.held_packet_count(), 1);
+    let events: Vec<_> = bob
+        .sync(&mut server, T0 + 3)
+        .into_iter()
+        .flat_map(|h| h.events)
+        .collect();
+    assert!(last_location(&events, alice.id()).is_some());
+    assert_eq!(bob.friends.held_packet_count(), 0);
 }

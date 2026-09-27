@@ -127,7 +127,7 @@ impl Device {
         for (from, data) in server.slots_for(self.id()) {
             let h = self
                 .friends
-                .handle_location(&self.store, from, &data, now)
+                .handle_location(&self.store, from, &data)
                 .unwrap();
             events.extend(h.events);
         }
