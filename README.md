@@ -13,7 +13,7 @@
 ## Документы
 
 - [План проекта](docs/PLAN.md)
-- Протокол и модель угроз — `docs/protocol.md`, `docs/threat-model.md` (появятся на этапе 0.6)
+- [Протокол](docs/protocol.md) и [модель угроз](docs/threat-model.md) — черновики
 - [Сообщить об уязвимости](SECURITY.md)
 
 ## Структура
