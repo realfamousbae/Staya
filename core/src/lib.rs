@@ -1,6 +1,8 @@
 //! Staya core: identity keys, Olm/Megolm sessions, location packets and local storage.
 
 pub mod account;
+pub mod friends;
+pub mod safety;
 pub mod store;
 
 uniffi::setup_scaffolding!();
@@ -22,6 +24,10 @@ pub enum CoreError {
     Crypto(&'static str),
     #[error("an account already exists on this device")]
     AccountExists,
+    #[error("unknown friend")]
+    UnknownFriend,
+    #[error("invalid invite: {0}")]
+    InvalidInvite(&'static str),
     #[error(transparent)]
     Proto(#[from] staya_proto::ProtoError),
 }

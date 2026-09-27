@@ -67,7 +67,7 @@ impl LocalAccount {
         }))
     }
 
-    pub(crate) fn save(&self, store: &Store) -> Result<(), CoreError> {
+    fn save(&self, store: &Store) -> Result<(), CoreError> {
         let p = Persisted {
             account_id: self.account_id.0,
             fallback_rotated_at: self.fallback_rotated_at,
@@ -178,12 +178,9 @@ impl LocalAccount {
         self.save(store)
     }
 
+    #[cfg(test)]
     pub(crate) fn olm(&self) -> &Account {
         &self.olm
-    }
-
-    pub(crate) fn olm_mut(&mut self) -> &mut Account {
-        &mut self.olm
     }
 }
 
