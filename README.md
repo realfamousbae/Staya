@@ -29,10 +29,11 @@
 ## Сборка
 
 ```bash
-cargo build
+cargo build                      # Rust: proto, core, server
+source scripts/env.sh            # JAVA_HOME и ANDROID_HOME для мобильных сборок
+scripts/build-ios-core.sh        # ядро для iOS, затем открыть ios/Staya.xcodeproj
+(cd android && ./gradlew assembleDebug)   # APK, ядро собирается автоматически
 ```
-
-Мобильные сборки добавятся на этапе 0.4. Окружение для них: `source scripts/env.sh`.
 
 ## Лицензия
 

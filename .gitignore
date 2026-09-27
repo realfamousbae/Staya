@@ -26,3 +26,6 @@ android/**/jniLibs/
 *.pem
 ios/Config/Local.xcconfig
 android/.kotlin/
+
+# Сгенерированное scripts/build-ios-core.sh
+ios/StayaCore/Sources/StayaCore/*.swift
