@@ -1,0 +1,26 @@
+# Rust
+/target/
+**/*.rs.bk
+
+# macOS / editors
+.DS_Store
+.vscode/
+.idea/
+
+# iOS
+ios/**/xcuserdata/
+ios/**/DerivedData/
+ios/**/*.xcframework
+ios/**/Generated/
+
+# Android
+android/.gradle/
+android/**/build/
+android/local.properties
+android/**/jniLibs/
+*.keystore
+*.jks
+
+# Secrets and local env
+.env
+*.pem
