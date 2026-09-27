@@ -350,16 +350,127 @@ fn cannot_accept_own_invite_or_befriend_twice() {
 }
 
 #[test]
-fn garbage_envelopes_are_rejected_without_panics() {
+fn garbage_envelopes_are_dropped_not_errors() {
+    // Ошибка не дала бы подтвердить сообщение, и оно застряло бы в очереди (§8.2).
     let mut alice = Device::new();
     let stranger = Device::new().id();
-    for len in [0usize, 10, 512, 1280] {
-        let data = vec![0xAB; len];
-        let _ = alice
+    for data in [
+        vec![],
+        vec![0xAB; 10],
+        vec![0xAB; 512],
+        vec![0xFF; 1280],
+        vec![0; 9472],
+    ] {
+        let handled = alice
             .friends
-            .handle_control(&alice.store, &mut alice.account, stranger, &data, T0);
+            .handle_control(&alice.store, &mut alice.account, stranger, &data, T0)
+            .unwrap();
+        assert!(matches!(handled.events[..], [Event::Dropped { .. }]));
+        assert!(handled.outgoing.is_empty());
     }
     assert!(alice.friends.list().is_empty());
+}
+
+#[test]
+fn can_accept_a_fresh_invite_after_the_first_one_expired() {
+    let mut server = FakeServer::default();
+    let (mut alice, mut bob) = (Device::new(), Device::new());
+    server.publish(&mut alice, T0);
+    let old = alice
+        .friends
+        .create_invite(
+            &alice.store,
+            &alice.account.identity(),
+            InviteMethod::Qr,
+            T0,
+        )
+        .unwrap();
+    let req = bob
+        .friends
+        .accept_invite(
+            &bob.store,
+            &bob.account,
+            &old,
+            &server.claim(alice.id()),
+            T0,
+        )
+        .unwrap();
+    server.send(bob.id(), req);
+    // Алиса открыла приложение слишком поздно: токен истёк, запрос отброшен.
+    alice.sync(&mut server, T0 + 3600);
+    assert_eq!(bob.friends.list()[0].state, FriendState::AwaitingAccept);
+
+    let fresh = alice
+        .friends
+        .create_invite(
+            &alice.store,
+            &alice.account.identity(),
+            InviteMethod::Qr,
+            T0 + 3600,
+        )
+        .unwrap();
+    let req = bob
+        .friends
+        .accept_invite(
+            &bob.store,
+            &bob.account,
+            &fresh,
+            &server.claim(alice.id()),
+            T0 + 3600,
+        )
+        .unwrap();
+    server.send(bob.id(), req);
+    assert_eq!(
+        events(&alice.sync(&mut server, T0 + 3601)),
+        vec![Event::FriendAdded { friend: bob.id() }]
+    );
+    assert_eq!(
+        events(&bob.sync(&mut server, T0 + 3602)),
+        vec![Event::FriendAdded { friend: alice.id() }]
+    );
+    assert_eq!(bob.friends.list().len(), 1);
+}
+
+#[test]
+fn redelivered_messages_do_not_duplicate_or_fail() {
+    // Сервер доставляет «хотя бы раз»: без ack то же сообщение придёт снова.
+    let mut server = FakeServer::default();
+    let (mut alice, mut bob) = (Device::new(), Device::new());
+    server.publish(&mut alice, T0);
+    let invite = alice
+        .friends
+        .create_invite(
+            &alice.store,
+            &alice.account.identity(),
+            InviteMethod::Qr,
+            T0,
+        )
+        .unwrap();
+    let req = bob
+        .friends
+        .accept_invite(
+            &bob.store,
+            &bob.account,
+            &invite,
+            &server.claim(alice.id()),
+            T0,
+        )
+        .unwrap();
+    server.send(bob.id(), req.clone());
+    server.send(bob.id(), req);
+    let ev = events(&alice.sync(&mut server, T0 + 1));
+    assert_eq!(ev[0], Event::FriendAdded { friend: bob.id() });
+    assert!(matches!(ev[1], Event::Dropped { .. }));
+    assert_eq!(alice.friends.list().len(), 1);
+
+    // Повтор FriendAccept у Боба тоже безвреден.
+    let accept = server.take_control(bob.id());
+    for (from, data) in accept.iter().chain(accept.iter()) {
+        bob.friends
+            .handle_control(&bob.store, &mut bob.account, *from, data, T0 + 2)
+            .unwrap();
+    }
+    assert_eq!(bob.friends.list()[0].state, FriendState::Active);
 }
 
 #[test]

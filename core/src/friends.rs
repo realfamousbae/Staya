@@ -227,7 +227,13 @@ impl Friends {
         })
     }
 
+    /// Сохраняет друзей, приглашения и профиль одной транзакцией.
     fn save(&self, store: &Store) -> Result<(), CoreError> {
+        store.atomically(|| self.write_records(store))
+    }
+
+    /// Запись без собственной транзакции — для вызова внутри `atomically`.
+    fn write_records(&self, store: &Store) -> Result<(), CoreError> {
         // JSON не допускает ключи-массивы, поэтому храним список пар.
         let records: Vec<([u8; 16], FriendRecord)> = self
             .friends
@@ -324,7 +330,13 @@ impl Friends {
         if invite.account_id == me.account_id {
             return Err(CoreError::InvalidInvite("own invite"));
         }
-        if self.friends.contains_key(&invite.account_id.0) {
+        // Можно заново принять приглашение, пока прошлая попытка не подтверждена
+        // (например, токен истёк): старые сессии заменяются новыми.
+        if self
+            .friends
+            .get(&invite.account_id.0)
+            .is_some_and(|f| f.state == FriendState::Active)
+        {
             return Err(CoreError::InvalidInvite("already a friend"));
         }
 
@@ -419,20 +431,25 @@ impl Friends {
         envelope: &[u8],
         now: i64,
     ) -> Result<Handled, CoreError> {
-        let env = ControlEnvelope::from_bytes(envelope)?;
-        let (olm_type, bytes) = env.open()?;
-        let message = OlmMessage::from_parts(olm_type as usize, bytes)
-            .map_err(|_| CoreError::Crypto("olm decode"))?;
-
         let mut handled = Handled::default();
+        // Всё, что контролируют сервер или собеседник, не должно давать `Err`:
+        // иначе сообщение не подтвердится и навсегда застрянет в очереди (§8.2).
+        let Some(message) = parse_control(envelope) else {
+            handled.events.push(Event::Dropped {
+                reason: "malformed envelope",
+            });
+            return Ok(handled);
+        };
         if self.friends.contains_key(&from_hint.0) {
             self.handle_from_friend(account, from_hint, &message, now, &mut handled)?;
         } else {
             self.handle_from_stranger(account, from_hint, &message, now, &mut handled)?;
         }
-        // Аккаунт мог израсходовать одноразовый ключ — сохраняем всё вместе.
-        account.save(store)?;
-        self.save(store)?;
+        // Аккаунт мог израсходовать одноразовый ключ — сохраняем всё одной транзакцией.
+        store.atomically(|| {
+            account.save(store)?;
+            self.write_records(store)
+        })?;
         Ok(handled)
     }
 
@@ -475,7 +492,13 @@ impl Friends {
                     });
                     return Ok(());
                 }
-                record.inbound_megolm = vec![inbound_megolm(&session_key)?];
+                let Some(inbound) = inbound_megolm(&session_key) else {
+                    handled.events.push(Event::Dropped {
+                        reason: "malformed session key",
+                    });
+                    return Ok(());
+                };
+                record.inbound_megolm = vec![inbound];
                 record.profile = Some(StoredProfile::from(&profile));
                 record.state = FriendState::Active;
                 handled
@@ -514,9 +537,15 @@ impl Friends {
                     });
                     return Ok(());
                 }
+                let Some(inbound) = inbound_megolm(&session_key) else {
+                    handled.events.push(Event::Dropped {
+                        reason: "malformed session key",
+                    });
+                    return Ok(());
+                };
                 let invite = self.invites.remove(pos);
                 record.verified |= invite.method == InviteMethodTag::Qr;
-                record.inbound_megolm = vec![inbound_megolm(&session_key)?];
+                record.inbound_megolm = vec![inbound];
                 record.profile = Some(StoredProfile::from(&profile));
                 let (outbound, _) = record
                     .outbound_megolm
@@ -592,6 +621,12 @@ impl Friends {
             });
             return Ok(());
         }
+        let Some(inbound) = inbound_megolm(&session_key) else {
+            handled.events.push(Event::Dropped {
+                reason: "malformed session key",
+            });
+            return Ok(());
+        };
         self.prune_invites(now);
         let Some(pos) = self.invites.iter().position(|i| i.token == token) else {
             handled.events.push(Event::Dropped {
@@ -618,7 +653,7 @@ impl Friends {
                 last_received_at: Some(now),
             }],
             outbound_megolm: Some((outbound, now)),
-            inbound_megolm: vec![inbound_megolm(&session_key)?],
+            inbound_megolm: vec![inbound],
         };
         handled
             .outgoing
@@ -712,10 +747,16 @@ fn encrypt_control(
     })
 }
 
-fn inbound_megolm(key: &SessionKeyBytes) -> Result<InboundGroupSession, CoreError> {
-    let key =
-        SessionKey::from_bytes(&key.0).map_err(|_| CoreError::Crypto("megolm session key"))?;
-    Ok(InboundGroupSession::new(&key, MegolmConfig::version_1()))
+/// Входящая Megolm-сессия из ключа, присланного другом; `None` — ключ испорчен.
+fn inbound_megolm(key: &SessionKeyBytes) -> Option<InboundGroupSession> {
+    let key = SessionKey::from_bytes(&key.0).ok()?;
+    Some(InboundGroupSession::new(&key, MegolmConfig::version_1()))
+}
+
+fn parse_control(envelope: &[u8]) -> Option<OlmMessage> {
+    let env = ControlEnvelope::from_bytes(envelope).ok()?;
+    let (olm_type, bytes) = env.open().ok()?;
+    OlmMessage::from_parts(olm_type as usize, bytes).ok()
 }
 
 fn verify(sk: &[u8; 32], message: &[u8], signature: &[u8]) -> Result<(), ()> {
