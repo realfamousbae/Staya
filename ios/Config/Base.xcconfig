@@ -1,0 +1,9 @@
+// Общие настройки. DEVELOPMENT_TEAM задаётся локально в Local.xcconfig (не в git):
+//   DEVELOPMENT_TEAM = XXXXXXXXXX
+PRODUCT_BUNDLE_IDENTIFIER = io.github.realfamousbae.staya
+IPHONEOS_DEPLOYMENT_TARGET = 18.0
+TARGETED_DEVICE_FAMILY = 1
+SWIFT_VERSION = 6.0
+CODE_SIGN_STYLE = Automatic
+
+#include? "Local.xcconfig"
