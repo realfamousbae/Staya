@@ -1,0 +1,49 @@
+// Rust-ядро Staya: .so и Kotlin-привязки собирает scripts/build-android-core.sh.
+plugins {
+    alias(libs.plugins.android.library)
+}
+
+val rustOut = layout.buildDirectory.dir("rust")
+val rustProfile = providers.gradleProperty("rustProfile").orElse("release")
+
+val buildRustCore by tasks.registering(Exec::class) {
+    group = "build"
+    description = "Собирает Rust-ядро и генерирует Kotlin-привязки"
+    val script = rootProject.layout.projectDirectory.file("../scripts/build-android-core.sh")
+    commandLine(script.asFile.absolutePath, rustProfile.get())
+    // Перезапускаем при изменении Rust-кода.
+    inputs.dir(rootProject.layout.projectDirectory.dir("../core/src"))
+    inputs.dir(rootProject.layout.projectDirectory.dir("../proto/src"))
+    inputs.file(rootProject.layout.projectDirectory.file("../Cargo.lock"))
+    inputs.property("profile", rustProfile)
+    outputs.dir(rustOut)
+}
+
+android {
+    namespace = "io.github.realfamousbae.staya.core"
+    compileSdk = 37
+    ndkVersion = "29.0.14206865"
+
+    defaultConfig {
+        minSdk = 29
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
+    }
+
+    sourceSets {
+        getByName("main") {
+            jniLibs.directories.add(rustOut.get().dir("jniLibs").asFile.path)
+            kotlin.directories.add(rustOut.get().dir("kotlin").asFile.path)
+        }
+    }
+}
+
+tasks.named("preBuild") { dependsOn(buildRustCore) }
+
+dependencies {
+    // Нужна Kotlin-привязкам UniFFI для вызова нативной библиотеки.
+    implementation(libs.jna) { artifact { type = "aar" } }
+}

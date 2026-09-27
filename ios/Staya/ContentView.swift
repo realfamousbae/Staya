@@ -1,3 +1,4 @@
+import StayaCore
 import SwiftUI
 
 struct ContentView: View {
@@ -5,7 +6,7 @@ struct ContentView: View {
         VStack(spacing: 8) {
             Text("Staya")
                 .font(.largeTitle.bold())
-            Text("Этап 0")
+            Text("Ядро \(coreVersion())")
                 .foregroundStyle(.secondary)
         }
         .padding()

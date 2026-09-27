@@ -14,6 +14,9 @@ android {
         targetSdk = 37
         versionCode = 1
         versionName = "0.1.0"
+
+        // Rust-ядро собирается только под arm64 (см. scripts/build-android-core.sh).
+        ndk { abiFilters += "arm64-v8a" }
     }
 
     buildTypes {
@@ -41,6 +44,7 @@ android {
 }
 
 dependencies {
+    implementation(project(":core"))
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.ui)

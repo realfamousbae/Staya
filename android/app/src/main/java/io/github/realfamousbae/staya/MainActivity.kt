@@ -14,6 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import uniffi.staya_core.coreVersion
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -30,19 +31,19 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun Greeting() {
+fun Greeting(version: String = coreVersion()) {
     Column(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text("Staya", style = MaterialTheme.typography.headlineLarge)
-        Text("Этап 0", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Ядро $version", color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
 @Preview
 @Composable
 private fun GreetingPreview() {
-    MaterialTheme { Greeting() }
+    MaterialTheme { Greeting(version = "preview") }
 }

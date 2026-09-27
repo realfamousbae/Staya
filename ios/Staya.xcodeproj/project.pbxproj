@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		AB0000000000000000000001 /* StayaCore in Frameworks */ = {isa = PBXBuildFile; productRef = AD0000000000000000000001 /* StayaCore */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		A10000000000000000000001 /* Staya.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Staya.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A10000000000000000000002 /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Base.xcconfig; sourceTree = "<group>"; };
@@ -21,6 +25,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AB0000000000000000000001 /* StayaCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -72,6 +77,9 @@
 				A20000000000000000000001 /* Staya */,
 			);
 			name = Staya;
+			packageProductDependencies = (
+				AD0000000000000000000001 /* StayaCore */,
+			);
 			productName = Staya;
 			productReference = A10000000000000000000001 /* Staya.app */;
 			productType = "com.apple.product-type.application";
@@ -96,6 +104,9 @@
 			);
 			mainGroup = A40000000000000000000001;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				AC0000000000000000000001 /* XCLocalSwiftPackageReference "StayaCore" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = A40000000000000000000002 /* Products */;
 			projectDirPath = "";
@@ -241,6 +252,20 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		AC0000000000000000000001 /* XCLocalSwiftPackageReference "StayaCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = StayaCore;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		AD0000000000000000000001 /* StayaCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = StayaCore;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = A70000000000000000000001 /* Project object */;
 }
