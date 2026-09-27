@@ -77,7 +77,7 @@ impl Store {
         let ciphertext = self
             .cipher
             .encrypt(
-                &XNonce::from(nonce),
+                XNonce::from_slice(&nonce),
                 Payload {
                     msg: value,
                     aad: &aad,
@@ -112,7 +112,7 @@ impl Store {
         let plaintext = self
             .cipher
             .decrypt(
-                &XNonce::try_from(nonce).map_err(|_| CoreError::Corrupted)?,
+                XNonce::from_slice(nonce),
                 Payload {
                     msg: ciphertext,
                     aad: &aad,
@@ -120,15 +120,6 @@ impl Store {
             )
             .map_err(|_| CoreError::Corrupted)?;
         Ok(Some(Zeroizing::new(plaintext)))
-    }
-
-    /// Выполняет несколько записей атомарно: либо все, либо ни одной.
-    /// Вложенные вызовы не поддерживаются.
-    pub fn atomically<T>(&self, f: impl FnOnce() -> Result<T, CoreError>) -> Result<T, CoreError> {
-        let tx = self.conn.unchecked_transaction()?;
-        let value = f()?;
-        tx.commit()?;
-        Ok(value)
     }
 
     pub fn delete_secret(&self, name: &str) -> Result<(), CoreError> {
@@ -182,22 +173,6 @@ mod tests {
             .unwrap();
         let other = Store::open(&path, &key(2)).unwrap();
         assert!(matches!(other.get_secret("a"), Err(CoreError::Corrupted)));
-    }
-
-    #[test]
-    fn atomically_rolls_back_on_error() {
-        let s = Store::open_in_memory(&key(1)).unwrap();
-        s.put_secret("a", b"old").unwrap();
-        let r: Result<(), CoreError> = s.atomically(|| {
-            s.put_secret("a", b"new")?;
-            s.put_secret("b", b"new")?;
-            Err(CoreError::Corrupted)
-        });
-        assert!(r.is_err());
-        assert_eq!(s.get_secret("a").unwrap().unwrap().as_slice(), b"old");
-        assert!(s.get_secret("b").unwrap().is_none());
-        s.atomically(|| s.put_secret("b", b"committed")).unwrap();
-        assert_eq!(s.get_secret("b").unwrap().unwrap().as_slice(), b"committed");
     }
 
     #[test]
