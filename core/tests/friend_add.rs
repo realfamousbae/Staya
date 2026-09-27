@@ -1,0 +1,447 @@
+//! Добавление друга по QR и по ссылке (`docs/protocol.md` §5, §6).
+
+mod common;
+
+use common::{Device, FakeServer};
+use staya_core::CoreError;
+use staya_core::friends::{Event, FriendState, Friends};
+use staya_proto::api::B64;
+use staya_proto::control::Profile;
+use staya_proto::invite::{Invite, InviteMethod};
+
+const T0: i64 = 1_700_000_000;
+
+fn events(handled: &[staya_core::friends::Handled]) -> Vec<Event> {
+    handled.iter().flat_map(|h| h.events.clone()).collect()
+}
+
+/// A приглашает, B принимает; возвращает устройства после полного обмена.
+fn befriend(method: InviteMethod) -> (Device, Device, FakeServer) {
+    let mut server = FakeServer::default();
+    let (mut alice, mut bob) = (Device::new(), Device::new());
+    server.publish(&mut alice, T0);
+    server.publish(&mut bob, T0);
+    alice
+        .friends
+        .set_profile(
+            &alice.store,
+            Profile {
+                nick: "Алиса".into(),
+                avatar: vec![],
+            },
+        )
+        .unwrap();
+    bob.friends
+        .set_profile(
+            &bob.store,
+            Profile {
+                nick: "Боб".into(),
+                avatar: vec![1, 2, 3],
+            },
+        )
+        .unwrap();
+
+    let invite = alice
+        .friends
+        .create_invite(&alice.store, &alice.account.identity(), method, T0)
+        .unwrap();
+    // Приглашение проходит через текст (QR или ссылку).
+    let invite = Invite::parse(&invite.to_uri()).unwrap();
+    let claimed = server.claim(invite.account_id);
+    let request = bob
+        .friends
+        .accept_invite(&bob.store, &bob.account, &invite, &claimed, T0)
+        .unwrap();
+    server.send(bob.id(), request);
+
+    let a = alice.sync(&mut server, T0 + 1);
+    assert_eq!(events(&a), vec![Event::FriendAdded { friend: bob.id() }]);
+    let b = bob.sync(&mut server, T0 + 2);
+    assert_eq!(events(&b), vec![Event::FriendAdded { friend: alice.id() }]);
+    (alice, bob, server)
+}
+
+#[test]
+fn qr_flow_is_verified_and_exchanges_profiles() {
+    let (alice, bob, _) = befriend(InviteMethod::Qr);
+    let a_view = &alice.friends.list()[0];
+    assert_eq!(a_view.account_id, bob.id());
+    assert_eq!(a_view.state, FriendState::Active);
+    assert!(a_view.verified);
+    assert_eq!(a_view.nick.as_deref(), Some("Боб"));
+    assert_eq!(a_view.avatar.as_deref(), Some(&[1u8, 2, 3][..]));
+
+    let b_view = &bob.friends.list()[0];
+    assert_eq!(b_view.state, FriendState::Active);
+    assert!(b_view.verified);
+    assert_eq!(b_view.nick.as_deref(), Some("Алиса"));
+}
+
+#[test]
+fn link_flow_needs_safety_code() {
+    let (mut alice, bob, _) = befriend(InviteMethod::Link);
+    assert!(!alice.friends.list()[0].verified);
+    assert!(!bob.friends.list()[0].verified);
+
+    let a_code = alice
+        .friends
+        .safety_code(&alice.account.identity(), &bob.id())
+        .unwrap();
+    let b_code = bob
+        .friends
+        .safety_code(&bob.account.identity(), &alice.id())
+        .unwrap();
+    assert_eq!(a_code, b_code);
+    assert_eq!(a_code.len(), 60);
+
+    alice
+        .friends
+        .mark_verified(&alice.store, &bob.id())
+        .unwrap();
+    assert!(alice.friends.list()[0].verified);
+}
+
+#[test]
+fn state_survives_restart_and_profile_updates_flow() {
+    let (mut alice, mut bob, mut server) = befriend(InviteMethod::Qr);
+    // Перезапуск: всё читается из зашифрованной базы.
+    alice.friends = Friends::load(&alice.store).unwrap();
+    bob.friends = Friends::load(&bob.store).unwrap();
+
+    let outs = alice
+        .friends
+        .set_profile(
+            &alice.store,
+            Profile {
+                nick: "Алиса 2".into(),
+                avatar: vec![],
+            },
+        )
+        .unwrap();
+    server.send_all(alice.id(), outs);
+    let b = bob.sync(&mut server, T0 + 10);
+    assert_eq!(
+        events(&b),
+        vec![Event::ProfileUpdated { friend: alice.id() }]
+    );
+    assert_eq!(bob.friends.list()[0].nick.as_deref(), Some("Алиса 2"));
+}
+
+#[test]
+fn token_is_single_use() {
+    let mut server = FakeServer::default();
+    let (mut alice, mut bob, mut carol) = (Device::new(), Device::new(), Device::new());
+    server.publish(&mut alice, T0);
+    let invite = alice
+        .friends
+        .create_invite(
+            &alice.store,
+            &alice.account.identity(),
+            InviteMethod::Qr,
+            T0,
+        )
+        .unwrap();
+
+    let req = bob
+        .friends
+        .accept_invite(
+            &bob.store,
+            &bob.account,
+            &invite,
+            &server.claim(alice.id()),
+            T0,
+        )
+        .unwrap();
+    server.send(bob.id(), req);
+    let req = carol
+        .friends
+        .accept_invite(
+            &carol.store,
+            &carol.account,
+            &invite,
+            &server.claim(alice.id()),
+            T0,
+        )
+        .unwrap();
+    server.send(carol.id(), req);
+
+    let ev = events(&alice.sync(&mut server, T0 + 1));
+    assert_eq!(ev[0], Event::FriendAdded { friend: bob.id() });
+    assert_eq!(
+        ev[1],
+        Event::Dropped {
+            reason: "unknown or expired invite token"
+        }
+    );
+    assert_eq!(alice.friends.list().len(), 1);
+}
+
+#[test]
+fn expired_token_is_rejected() {
+    let mut server = FakeServer::default();
+    let (mut alice, mut bob) = (Device::new(), Device::new());
+    server.publish(&mut alice, T0);
+    let invite = alice
+        .friends
+        .create_invite(
+            &alice.store,
+            &alice.account.identity(),
+            InviteMethod::Qr,
+            T0,
+        )
+        .unwrap();
+    let req = bob
+        .friends
+        .accept_invite(
+            &bob.store,
+            &bob.account,
+            &invite,
+            &server.claim(alice.id()),
+            T0,
+        )
+        .unwrap();
+    server.send(bob.id(), req);
+    // QR живёт 10 минут.
+    let ev = events(&alice.sync(&mut server, T0 + 11 * 60));
+    assert_eq!(
+        ev,
+        vec![Event::Dropped {
+            reason: "unknown or expired invite token"
+        }]
+    );
+}
+
+#[test]
+fn forged_one_time_key_is_rejected() {
+    let mut server = FakeServer::default();
+    let (mut alice, mut bob, mut mallory) = (Device::new(), Device::new(), Device::new());
+    server.publish(&mut alice, T0);
+    server.publish(&mut mallory, T0);
+    let invite = alice
+        .friends
+        .create_invite(
+            &alice.store,
+            &alice.account.identity(),
+            InviteMethod::Qr,
+            T0,
+        )
+        .unwrap();
+
+    // Сервер подсовывает ключ Mallory вместо ключа Алисы.
+    let forged = server.claim(mallory.id());
+    let err = bob
+        .friends
+        .accept_invite(&bob.store, &bob.account, &invite, &forged, T0)
+        .unwrap_err();
+    assert!(matches!(err, CoreError::InvalidInvite("key signature")));
+
+    // Подпись от OTK не подходит, если сервер выдаёт ключ как fallback.
+    let mut relabeled = server.claim(alice.id());
+    relabeled.is_fallback = true;
+    assert!(
+        bob.friends
+            .accept_invite(&bob.store, &bob.account, &invite, &relabeled, T0)
+            .is_err()
+    );
+
+    // Порченая подпись.
+    let mut broken = server.claim(alice.id());
+    broken.key.signature = B64(vec![0; 64]);
+    assert!(
+        bob.friends
+            .accept_invite(&bob.store, &bob.account, &invite, &broken, T0)
+            .is_err()
+    );
+}
+
+#[test]
+fn server_cannot_spoof_the_sender_of_a_request() {
+    let mut server = FakeServer::default();
+    let (mut alice, mut bob, carol) = (Device::new(), Device::new(), Device::new());
+    server.publish(&mut alice, T0);
+    let invite = alice
+        .friends
+        .create_invite(
+            &alice.store,
+            &alice.account.identity(),
+            InviteMethod::Qr,
+            T0,
+        )
+        .unwrap();
+    let req = bob
+        .friends
+        .accept_invite(
+            &bob.store,
+            &bob.account,
+            &invite,
+            &server.claim(alice.id()),
+            T0,
+        )
+        .unwrap();
+    // Сервер утверждает, что запрос от Кэрол.
+    server.send(carol.id(), req);
+    let ev = events(&alice.sync(&mut server, T0 + 1));
+    assert_eq!(
+        ev,
+        vec![Event::Dropped {
+            reason: "sender id mismatch"
+        }]
+    );
+    assert!(alice.friends.list().is_empty());
+}
+
+#[test]
+fn works_on_fallback_key_when_otks_run_out() {
+    let mut server = FakeServer::default();
+    let (mut alice, mut bob) = (Device::new(), Device::new());
+    server.publish(&mut alice, T0);
+    while server.otk_count(alice.id()) > 0 {
+        server.claim(alice.id());
+    }
+    let invite = alice
+        .friends
+        .create_invite(
+            &alice.store,
+            &alice.account.identity(),
+            InviteMethod::Qr,
+            T0,
+        )
+        .unwrap();
+    let claimed = server.claim(alice.id());
+    assert!(claimed.is_fallback);
+    let req = bob
+        .friends
+        .accept_invite(&bob.store, &bob.account, &invite, &claimed, T0)
+        .unwrap();
+    server.send(bob.id(), req);
+    assert_eq!(
+        events(&alice.sync(&mut server, T0 + 1)),
+        vec![Event::FriendAdded { friend: bob.id() }]
+    );
+    assert_eq!(
+        events(&bob.sync(&mut server, T0 + 2)),
+        vec![Event::FriendAdded { friend: alice.id() }]
+    );
+}
+
+#[test]
+fn cannot_accept_own_invite_or_befriend_twice() {
+    let (alice, mut bob, mut server) = befriend(InviteMethod::Qr);
+    let mut alice = alice;
+    let invite = alice
+        .friends
+        .create_invite(
+            &alice.store,
+            &alice.account.identity(),
+            InviteMethod::Qr,
+            T0,
+        )
+        .unwrap();
+    let claimed = server.claim(alice.id());
+    assert!(
+        bob.friends
+            .accept_invite(&bob.store, &bob.account, &invite, &claimed, T0)
+            .is_err()
+    );
+    let own = alice
+        .friends
+        .accept_invite(&alice.store, &alice.account, &invite, &claimed, T0);
+    assert!(matches!(own, Err(CoreError::InvalidInvite("own invite"))));
+}
+
+#[test]
+fn garbage_envelopes_are_rejected_without_panics() {
+    let mut alice = Device::new();
+    let stranger = Device::new().id();
+    for len in [0usize, 10, 512, 1280] {
+        let data = vec![0xAB; len];
+        let _ = alice
+            .friends
+            .handle_control(&alice.store, &mut alice.account, stranger, &data, T0);
+    }
+    assert!(alice.friends.list().is_empty());
+}
+
+#[test]
+fn simultaneous_mutual_invites_do_not_wedge() {
+    let mut server = FakeServer::default();
+    let (mut alice, mut bob) = (Device::new(), Device::new());
+    server.publish(&mut alice, T0);
+    server.publish(&mut bob, T0);
+    let a_inv = alice
+        .friends
+        .create_invite(
+            &alice.store,
+            &alice.account.identity(),
+            InviteMethod::Qr,
+            T0,
+        )
+        .unwrap();
+    let b_inv = bob
+        .friends
+        .create_invite(&bob.store, &bob.account.identity(), InviteMethod::Qr, T0)
+        .unwrap();
+
+    // Оба сканируют QR друг друга до того, как получили что-либо.
+    let r = bob
+        .friends
+        .accept_invite(
+            &bob.store,
+            &bob.account,
+            &a_inv,
+            &server.claim(alice.id()),
+            T0,
+        )
+        .unwrap();
+    server.send(bob.id(), r);
+    let r = alice
+        .friends
+        .accept_invite(
+            &alice.store,
+            &alice.account,
+            &b_inv,
+            &server.claim(bob.id()),
+            T0,
+        )
+        .unwrap();
+    server.send(alice.id(), r);
+
+    for i in 0..3 {
+        alice.sync(&mut server, T0 + 1 + i);
+        bob.sync(&mut server, T0 + 1 + i);
+    }
+    assert_eq!(alice.friends.list()[0].state, FriendState::Active);
+    assert_eq!(bob.friends.list()[0].state, FriendState::Active);
+
+    // Канал работает в обе стороны.
+    let outs = alice
+        .friends
+        .set_profile(
+            &alice.store,
+            Profile {
+                nick: "A".into(),
+                avatar: vec![],
+            },
+        )
+        .unwrap();
+    server.send_all(alice.id(), outs);
+    assert_eq!(
+        events(&bob.sync(&mut server, T0 + 10)),
+        vec![Event::ProfileUpdated { friend: alice.id() }]
+    );
+    let outs = bob
+        .friends
+        .set_profile(
+            &bob.store,
+            Profile {
+                nick: "B".into(),
+                avatar: vec![],
+            },
+        )
+        .unwrap();
+    server.send_all(bob.id(), outs);
+    assert_eq!(
+        events(&alice.sync(&mut server, T0 + 11)),
+        vec![Event::ProfileUpdated { friend: bob.id() }]
+    );
+}
