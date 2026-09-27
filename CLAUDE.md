@@ -8,7 +8,7 @@
 - core/ — staya-core: vodozemac (Olm + Megolm), протокол, хранилище, UniFFI; sans-IO — сеть на стороне платформ
 - server/ — staya-server: Rust (axum), PostgreSQL
 - ios/ — Swift, SwiftUI, iOS 18+
-- android/ — Kotlin, Jetpack Compose, minSdk 29, без Google Play Services
+- android/ — Kotlin, Jetpack Compose, minSdk 29, compileSdk/targetSdk 37, без Google Play Services
 
 ## Правила безопасности (обязательны)
 - Не писать собственную криптографию: только vodozemac и проверенные примитивы (RustCrypto).
@@ -24,7 +24,8 @@
 
 ## Окружение
 - `source scripts/env.sh` — JAVA_HOME (openjdk@21) и ANDROID_HOME (~/Library/Android/sdk, без Android Studio).
-- Android SDK минимальный: platform-tools, platforms;android-36, build-tools;36.0.0, ndk;29.0.14206865. Ничего сверх этого без согласования.
+- Android SDK минимальный: platform-tools, platforms;android-37.0, build-tools;36.0.0, ndk;29.0.14206865. Ничего сверх этого без согласования.
+- iOS: сборка без подписи — `xcodebuild -project ios/Staya.xcodeproj -target Staya -sdk iphonesimulator CODE_SIGNING_ALLOWED=NO build` (схемы с -destination требуют скачанной iOS-платформы). DEVELOPMENT_TEAM — в ios/Config/Local.xcconfig (не в git).
 - iOS: Personal Team (нет платного Apple Developer Program) — без APNs, TestFlight, universal links.
 
 ## Проверки перед коммитом

@@ -24,3 +24,5 @@ android/**/jniLibs/
 # Secrets and local env
 .env
 *.pem
+ios/Config/Local.xcconfig
+android/.kotlin/

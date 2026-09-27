@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Staya показывает твою позицию на карте и отправляет её выбранным друзьям в зашифрованном виде.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Staya отправляет позицию друзьям в фоне, в зашифрованном виде. Сервер не видит координат.</string>
+</dict>
+</plist>
