@@ -24,6 +24,8 @@ pub enum CoreError {
     Crypto(&'static str),
     #[error("an account already exists on this device")]
     AccountExists,
+    #[error("a location is required unless ghost mode or freeze is on")]
+    MissingLocation,
     #[error("unknown friend")]
     UnknownFriend,
     #[error("invalid invite: {0}")]

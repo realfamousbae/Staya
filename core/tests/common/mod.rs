@@ -17,6 +17,8 @@ pub struct FakeServer {
     fallback: BTreeMap<AccountId, SignedKey>,
     /// Отправитель ставится сервером — как в настоящем (§8.1).
     control: BTreeMap<AccountId, VecDeque<(AccountId, Vec<u8>)>>,
+    /// Последний пакет позиции для пары (отправитель, получатель) — upsert (§8.1).
+    slots: BTreeMap<(AccountId, AccountId), Vec<u8>>,
 }
 
 impl FakeServer {
@@ -56,15 +58,25 @@ impl FakeServer {
     }
 
     pub fn send(&mut self, from: AccountId, out: Outgoing) {
-        assert_eq!(
-            out.kind,
-            EnvelopeKind::Control,
-            "only control envelopes in these tests"
-        );
-        self.control
-            .entry(out.to)
-            .or_default()
-            .push_back((from, out.data));
+        match out.kind {
+            EnvelopeKind::Control => self
+                .control
+                .entry(out.to)
+                .or_default()
+                .push_back((from, out.data)),
+            EnvelopeKind::Location => {
+                self.slots.insert((from, out.to), out.data);
+            }
+        }
+    }
+
+    /// Все слоты позиций для получателя (не удаляются при чтении, как на сервере).
+    pub fn slots_for(&self, to: AccountId) -> Vec<(AccountId, Vec<u8>)> {
+        self.slots
+            .iter()
+            .filter(|((_, r), _)| *r == to)
+            .map(|((s, _), d)| (*s, d.clone()))
+            .collect()
     }
 
     pub fn send_all(&mut self, from: AccountId, outs: Vec<Outgoing>) {
@@ -103,6 +115,23 @@ impl Device {
 
     pub fn id(&self) -> AccountId {
         self.account.identity().account_id
+    }
+
+    /// Полная выборка по §8.2: сначала очередь, затем слоты позиций.
+    pub fn fetch(&mut self, server: &mut FakeServer, now: i64) -> Vec<staya_core::friends::Event> {
+        let mut events: Vec<_> = self
+            .sync(server, now)
+            .into_iter()
+            .flat_map(|h| h.events)
+            .collect();
+        for (from, data) in server.slots_for(self.id()) {
+            let h = self
+                .friends
+                .handle_location(&self.store, from, &data)
+                .unwrap();
+            events.extend(h.events);
+        }
+        events
     }
 
     /// Обрабатывает всю очередь; исходящие ответы отправляет через сервер.

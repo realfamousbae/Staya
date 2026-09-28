@@ -27,6 +27,9 @@ const FRIENDS_RECORD: &str = "friends";
 const INVITES_RECORD: &str = "invites";
 const PROFILE_RECORD: &str = "profile";
 
+mod location;
+pub use location::{Location, Sharing};
+
 /// Конверт, который платформа должна отправить на сервер.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Outgoing {
@@ -42,6 +45,11 @@ pub enum Event {
     FriendAdded { friend: AccountId },
     /// Друг обновил ник или аватар.
     ProfileUpdated { friend: AccountId },
+    /// Новая позиция друга (в т. ч. `Hidden` — друг скрыл позицию от нас).
+    LocationUpdated {
+        friend: AccountId,
+        payload: staya_proto::location::LocationPayload,
+    },
     /// Конверт отброшен; причина — для отладки, без секретов.
     Dropped { reason: &'static str },
 }
@@ -102,8 +110,19 @@ struct Friend {
     olm: Vec<OlmEntry>,
     /// Исходящая Megolm-сессия к другу и время её создания.
     outbound_megolm: Option<(GroupSession, i64)>,
-    /// Текущая и, возможно, следующая входящие Megolm-сессии (§7.5; логика — задача 2.5).
+    /// Входящие Megolm-сессии, от старой к новой (§7.5).
     inbound_megolm: Vec<InboundGroupSession>,
+    /// Какую точность мы показываем этому другу.
+    precision: Precision,
+}
+
+/// Точность, с которой другу видна наша позиция (§7.3).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Precision {
+    #[default]
+    Exact,
+    Approx,
+    Hidden,
 }
 
 /// Форма [`Friend`] для хранения: сессии в виде pickle.
@@ -117,6 +136,8 @@ struct FriendRecord {
     olm: Vec<(SessionPickle, i64, Option<i64>)>,
     outbound_megolm: Option<(GroupSessionPickle, i64)>,
     inbound_megolm: Vec<InboundGroupSessionPickle>,
+    #[serde(default)]
+    precision: Precision,
 }
 
 impl Friend {
@@ -141,6 +162,7 @@ impl Friend {
                 .iter()
                 .map(InboundGroupSession::pickle)
                 .collect(),
+            precision: self.precision,
         }
     }
 
@@ -168,6 +190,7 @@ impl Friend {
                 .into_iter()
                 .map(InboundGroupSession::from_pickle)
                 .collect(),
+            precision: r.precision,
         }
     }
 }
@@ -209,6 +232,9 @@ pub struct Friends {
     friends: BTreeMap<[u8; 16], Friend>,
     invites: Vec<PendingInvite>,
     profile: StoredProfile,
+    sharing: location::Sharing,
+    /// Пакеты позиции от сессий, которых ещё нет (§7.5): по подсказке отправителя, только последний.
+    held: Vec<([u8; 16], Vec<u8>)>,
 }
 
 impl Friends {
@@ -224,6 +250,8 @@ impl Friends {
                 nick: String::new(),
                 avatar: vec![],
             }),
+            sharing: load_json(store, location::SHARING_RECORD)?.unwrap_or_default(),
+            held: load_json(store, location::HELD_RECORD)?.unwrap_or_default(),
         })
     }
 
@@ -242,7 +270,9 @@ impl Friends {
             .collect();
         save_json(store, FRIENDS_RECORD, &records)?;
         save_json(store, INVITES_RECORD, &self.invites)?;
-        save_json(store, PROFILE_RECORD, &self.profile)
+        save_json(store, PROFILE_RECORD, &self.profile)?;
+        save_json(store, location::SHARING_RECORD, &self.sharing)?;
+        save_json(store, location::HELD_RECORD, &self.held)
     }
 
     pub fn list(&self) -> Vec<FriendInfo> {
@@ -387,6 +417,7 @@ impl Friends {
             }],
             outbound_megolm: Some((megolm, now)),
             inbound_megolm: vec![],
+            precision: Precision::default(),
         };
         let out = encrypt_control(&mut record, invite.account_id, &request)?;
         self.friends.insert(invite.account_id.0, record);
@@ -504,6 +535,8 @@ impl Friends {
                 handled
                     .events
                     .push(Event::FriendAdded { friend: friend_id });
+                // Пакет позиции мог прийти по WebSocket раньше подтверждения.
+                self.retry_held(handled);
             }
             ControlMessage::Profile(profile) => {
                 record.profile = Some(StoredProfile::from(&profile));
@@ -545,7 +578,11 @@ impl Friends {
                 };
                 let invite = self.invites.remove(pos);
                 record.verified |= invite.method == InviteMethodTag::Qr;
-                record.inbound_megolm = vec![inbound];
+                // После установления дружбы список сессий меняет только SessionShare,
+                // иначе нарушился бы порядок, на котором держится защита от отката (§7.5).
+                if record.state != FriendState::Active {
+                    record.inbound_megolm = vec![inbound];
+                }
                 record.profile = Some(StoredProfile::from(&profile));
                 let (outbound, _) = record
                     .outbound_megolm
@@ -564,9 +601,19 @@ impl Friends {
                         .events
                         .push(Event::FriendAdded { friend: friend_id });
                 }
+                self.retry_held(handled);
             }
-            // SessionShare и Unfriend обрабатываются в задачах 2.5 и 2.6.
-            ControlMessage::SessionShare { .. } | ControlMessage::Unfriend => {
+            ControlMessage::SessionShare { session_key } => {
+                if !Self::add_inbound_session(record, &session_key) {
+                    handled.events.push(Event::Dropped {
+                        reason: "malformed session key",
+                    });
+                }
+                // Пакеты, ждавшие этого ключа, теперь можно расшифровать.
+                self.retry_held(handled);
+            }
+            // Unfriend обрабатывается в задаче 2.6.
+            ControlMessage::Unfriend => {
                 handled.events.push(Event::Dropped {
                     reason: "not implemented yet",
                 });
@@ -654,6 +701,7 @@ impl Friends {
             }],
             outbound_megolm: Some((outbound, now)),
             inbound_megolm: vec![inbound],
+            precision: Precision::default(),
         };
         handled
             .outgoing
