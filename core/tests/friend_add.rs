@@ -48,11 +48,10 @@ fn befriend(method: InviteMethod) -> (Device, Device, FakeServer) {
     // Приглашение проходит через текст (QR или ссылку).
     let invite = Invite::parse(&invite.to_uri()).unwrap();
     let claimed = server.claim(invite.account_id);
-    let request = bob
-        .friends
+    bob.friends
         .accept_invite(&bob.store, &bob.account, &invite, &claimed, T0)
         .unwrap();
-    server.send(bob.id(), request);
+    bob.flush(&mut server);
 
     let a = alice.sync(&mut server, T0 + 1);
     assert_eq!(events(&a), vec![Event::FriendAdded { friend: bob.id() }]);
@@ -108,7 +107,7 @@ fn state_survives_restart_and_profile_updates_flow() {
     alice.friends = Friends::load(&alice.store).unwrap();
     bob.friends = Friends::load(&bob.store).unwrap();
 
-    let outs = alice
+    alice
         .friends
         .set_profile(
             &alice.store,
@@ -118,7 +117,7 @@ fn state_survives_restart_and_profile_updates_flow() {
             },
         )
         .unwrap();
-    server.send_all(alice.id(), outs);
+    alice.flush(&mut server);
     let b = bob.sync(&mut server, T0 + 10);
     assert_eq!(
         events(&b),
@@ -142,8 +141,7 @@ fn token_is_single_use() {
         )
         .unwrap();
 
-    let req = bob
-        .friends
+    bob.friends
         .accept_invite(
             &bob.store,
             &bob.account,
@@ -152,8 +150,8 @@ fn token_is_single_use() {
             T0,
         )
         .unwrap();
-    server.send(bob.id(), req);
-    let req = carol
+    bob.flush(&mut server);
+    carol
         .friends
         .accept_invite(
             &carol.store,
@@ -163,7 +161,7 @@ fn token_is_single_use() {
             T0,
         )
         .unwrap();
-    server.send(carol.id(), req);
+    carol.flush(&mut server);
 
     let ev = events(&alice.sync(&mut server, T0 + 1));
     assert_eq!(ev[0], Event::FriendAdded { friend: bob.id() });
@@ -190,8 +188,7 @@ fn expired_token_is_rejected() {
             T0,
         )
         .unwrap();
-    let req = bob
-        .friends
+    bob.friends
         .accept_invite(
             &bob.store,
             &bob.account,
@@ -200,7 +197,7 @@ fn expired_token_is_rejected() {
             T0,
         )
         .unwrap();
-    server.send(bob.id(), req);
+    bob.flush(&mut server);
     // QR живёт 10 минут.
     let ev = events(&alice.sync(&mut server, T0 + 11 * 60));
     assert_eq!(
@@ -268,8 +265,7 @@ fn server_cannot_spoof_the_sender_of_a_request() {
             T0,
         )
         .unwrap();
-    let req = bob
-        .friends
+    bob.friends
         .accept_invite(
             &bob.store,
             &bob.account,
@@ -279,7 +275,9 @@ fn server_cannot_spoof_the_sender_of_a_request() {
         )
         .unwrap();
     // Сервер утверждает, что запрос от Кэрол.
-    server.send(carol.id(), req);
+    for env in bob.take_pending() {
+        server.inject_control(carol.id(), env.to, env.data);
+    }
     let ev = events(&alice.sync(&mut server, T0 + 1));
     assert_eq!(
         ev,
@@ -309,11 +307,10 @@ fn works_on_fallback_key_when_otks_run_out() {
         .unwrap();
     let claimed = server.claim(alice.id());
     assert!(claimed.is_fallback);
-    let req = bob
-        .friends
+    bob.friends
         .accept_invite(&bob.store, &bob.account, &invite, &claimed, T0)
         .unwrap();
-    server.send(bob.id(), req);
+    bob.flush(&mut server);
     assert_eq!(
         events(&alice.sync(&mut server, T0 + 1)),
         vec![Event::FriendAdded { friend: bob.id() }]
@@ -366,9 +363,9 @@ fn garbage_envelopes_are_dropped_not_errors() {
             .handle_control(&alice.store, &mut alice.account, stranger, &data, T0)
             .unwrap();
         assert!(matches!(handled.events[..], [Event::Dropped { .. }]));
-        assert!(handled.outgoing.is_empty());
     }
     assert!(alice.friends.list().is_empty());
+    assert!(alice.friends.pending_sends().envelopes.is_empty());
 }
 
 #[test]
@@ -385,8 +382,7 @@ fn can_accept_a_fresh_invite_after_the_first_one_expired() {
             T0,
         )
         .unwrap();
-    let req = bob
-        .friends
+    bob.friends
         .accept_invite(
             &bob.store,
             &bob.account,
@@ -395,7 +391,7 @@ fn can_accept_a_fresh_invite_after_the_first_one_expired() {
             T0,
         )
         .unwrap();
-    server.send(bob.id(), req);
+    bob.flush(&mut server);
     // Алиса открыла приложение слишком поздно: токен истёк, запрос отброшен.
     alice.sync(&mut server, T0 + 3600);
     assert_eq!(bob.friends.list()[0].state, FriendState::AwaitingAccept);
@@ -409,8 +405,7 @@ fn can_accept_a_fresh_invite_after_the_first_one_expired() {
             T0 + 3600,
         )
         .unwrap();
-    let req = bob
-        .friends
+    bob.friends
         .accept_invite(
             &bob.store,
             &bob.account,
@@ -419,7 +414,7 @@ fn can_accept_a_fresh_invite_after_the_first_one_expired() {
             T0 + 3600,
         )
         .unwrap();
-    server.send(bob.id(), req);
+    bob.flush(&mut server);
     assert_eq!(
         events(&alice.sync(&mut server, T0 + 3601)),
         vec![Event::FriendAdded { friend: bob.id() }]
@@ -446,8 +441,7 @@ fn redelivered_messages_do_not_duplicate_or_fail() {
             T0,
         )
         .unwrap();
-    let req = bob
-        .friends
+    bob.friends
         .accept_invite(
             &bob.store,
             &bob.account,
@@ -456,8 +450,11 @@ fn redelivered_messages_do_not_duplicate_or_fail() {
             T0,
         )
         .unwrap();
-    server.send(bob.id(), req.clone());
-    server.send(bob.id(), req);
+    // Сервер доставляет один и тот же запрос дважды.
+    for env in bob.take_pending() {
+        server.deliver(bob.id(), &env);
+        server.deliver(bob.id(), &env);
+    }
     let ev = events(&alice.sync(&mut server, T0 + 1));
     assert_eq!(ev[0], Event::FriendAdded { friend: bob.id() });
     assert!(matches!(ev[1], Event::Dropped { .. }));
@@ -494,8 +491,7 @@ fn simultaneous_mutual_invites_do_not_wedge() {
         .unwrap();
 
     // Оба сканируют QR друг друга до того, как получили что-либо.
-    let r = bob
-        .friends
+    bob.friends
         .accept_invite(
             &bob.store,
             &bob.account,
@@ -504,8 +500,8 @@ fn simultaneous_mutual_invites_do_not_wedge() {
             T0,
         )
         .unwrap();
-    server.send(bob.id(), r);
-    let r = alice
+    bob.flush(&mut server);
+    alice
         .friends
         .accept_invite(
             &alice.store,
@@ -515,7 +511,7 @@ fn simultaneous_mutual_invites_do_not_wedge() {
             T0,
         )
         .unwrap();
-    server.send(alice.id(), r);
+    alice.flush(&mut server);
 
     for i in 0..3 {
         alice.sync(&mut server, T0 + 1 + i);
@@ -525,7 +521,7 @@ fn simultaneous_mutual_invites_do_not_wedge() {
     assert_eq!(bob.friends.list()[0].state, FriendState::Active);
 
     // Канал работает в обе стороны.
-    let outs = alice
+    alice
         .friends
         .set_profile(
             &alice.store,
@@ -535,13 +531,12 @@ fn simultaneous_mutual_invites_do_not_wedge() {
             },
         )
         .unwrap();
-    server.send_all(alice.id(), outs);
+    alice.flush(&mut server);
     assert_eq!(
         events(&bob.sync(&mut server, T0 + 10)),
         vec![Event::ProfileUpdated { friend: alice.id() }]
     );
-    let outs = bob
-        .friends
+    bob.friends
         .set_profile(
             &bob.store,
             Profile {
@@ -550,7 +545,7 @@ fn simultaneous_mutual_invites_do_not_wedge() {
             },
         )
         .unwrap();
-    server.send_all(bob.id(), outs);
+    bob.flush(&mut server);
     assert_eq!(
         events(&alice.sync(&mut server, T0 + 11)),
         vec![Event::ProfileUpdated { friend: bob.id() }]

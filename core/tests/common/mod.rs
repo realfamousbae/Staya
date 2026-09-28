@@ -5,7 +5,7 @@
 use std::collections::{BTreeMap, VecDeque};
 
 use staya_core::account::LocalAccount;
-use staya_core::friends::{Friends, Handled, Outgoing};
+use staya_core::friends::{Friends, Handled, QueuedEnvelope};
 use staya_core::store::{DbKey, Store};
 use staya_proto::AccountId;
 use staya_proto::api::{ClaimResponse, EnvelopeKind, SignedKey};
@@ -57,17 +57,31 @@ impl FakeServer {
         self.otks.get(&id).map_or(0, Vec::len)
     }
 
-    pub fn send(&mut self, from: AccountId, out: Outgoing) {
-        match out.kind {
+    /// Принимает конверт от `from` — отправителя сервер берёт из сессии (§8.1).
+    pub fn deliver(&mut self, from: AccountId, env: &QueuedEnvelope) {
+        match env.kind {
             EnvelopeKind::Control => self
                 .control
-                .entry(out.to)
+                .entry(env.to)
                 .or_default()
-                .push_back((from, out.data)),
+                .push_back((from, env.data.clone())),
             EnvelopeKind::Location => {
-                self.slots.insert((from, out.to), out.data);
+                self.slots.insert((from, env.to), env.data.clone());
             }
         }
+    }
+
+    /// Кладёт в очередь получателя произвольные байты с произвольным отправителем.
+    pub fn inject_control(&mut self, from: AccountId, to: AccountId, data: Vec<u8>) {
+        self.control.entry(to).or_default().push_back((from, data));
+    }
+
+    pub fn has_slot(&self, from: AccountId, to: AccountId) -> bool {
+        self.slots.contains_key(&(from, to))
+    }
+
+    pub fn delete_slot(&mut self, from: AccountId, to: AccountId) {
+        self.slots.remove(&(from, to));
     }
 
     /// Все слоты позиций для получателя (не удаляются при чтении, как на сервере).
@@ -77,12 +91,6 @@ impl FakeServer {
             .filter(|((_, r), _)| *r == to)
             .map(|((s, _), d)| (*s, d.clone()))
             .collect()
-    }
-
-    pub fn send_all(&mut self, from: AccountId, outs: Vec<Outgoing>) {
-        for o in outs {
-            self.send(from, o);
-        }
     }
 
     pub fn take_control(&mut self, to: AccountId) -> Vec<(AccountId, Vec<u8>)> {
@@ -142,9 +150,32 @@ impl Device {
                 .friends
                 .handle_control(&self.store, &mut self.account, from, &data, now)
                 .unwrap();
-            server.send_all(self.id(), handled.outgoing.clone());
             results.push(handled);
         }
+        // Как платформа: после обработки отправляем исходящую очередь.
+        self.flush(server);
         results
+    }
+
+    /// Отправляет всю исходящую очередь в порядке §8.2 и отмечает её отправленной.
+    pub fn flush(&mut self, server: &mut FakeServer) {
+        let pending = self.friends.pending_sends();
+        for to in pending.delete_slots {
+            server.delete_slot(self.id(), to);
+            self.friends.mark_slot_deleted(&self.store, &to).unwrap();
+        }
+        for env in &pending.envelopes {
+            server.deliver(self.id(), env);
+        }
+        let ids: Vec<u64> = pending.envelopes.iter().map(|e| e.id).collect();
+        self.friends.mark_sent(&self.store, &ids).unwrap();
+    }
+
+    /// Забирает исходящую очередь без отправки (для тестов порядка и подмены).
+    pub fn take_pending(&mut self) -> Vec<QueuedEnvelope> {
+        let pending = self.friends.pending_sends().envelopes;
+        let ids: Vec<u64> = pending.iter().map(|e| e.id).collect();
+        self.friends.mark_sent(&self.store, &ids).unwrap();
+        pending
     }
 }

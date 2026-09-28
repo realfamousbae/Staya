@@ -123,6 +123,23 @@ pub struct SendRequest {
     pub envelopes: Vec<OutgoingEnvelope>,
 }
 
+/// Статус одного конверта в ответе на `POST /v1/envelopes`, в том же порядке.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum EnvelopeStatus {
+    Accepted,
+    /// Окончательно: повтор не поможет (очередь получателя полна, неверный размер,
+    /// неизвестный аккаунт). Клиент списывает конверт из исходящей очереди.
+    Rejected {
+        reason: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SendResponse {
+    pub results: Vec<EnvelopeStatus>,
+}
+
 /// Управляющее сообщение из очереди.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QueuedControl {

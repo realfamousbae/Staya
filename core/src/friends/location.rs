@@ -83,7 +83,8 @@ impl Friends {
         self.friends.get(&friend.0).map(|f| f.precision)
     }
 
-    /// Готовит одну отправку: по пакету позиции каждому активному другу (§7.4).
+    /// Готовит одну отправку: кладёт в исходящую очередь по пакету позиции
+    /// каждому активному другу (§7.4).
     ///
     /// `location` нужна, только если не включены призрак или заморозка.
     /// `now` — время отправки: им помечаются пакеты `Hidden`.
@@ -93,12 +94,11 @@ impl Friends {
         store: &Store,
         location: Option<Location>,
         now: i64,
-    ) -> Result<Vec<Outgoing>, CoreError> {
+    ) -> Result<(), CoreError> {
         let sharing = self.sharing;
         if !sharing.ghost && sharing.frozen.is_none() && location.is_none() {
             return Err(CoreError::MissingLocation);
         }
-        let mut out = Vec::new();
         for (id, friend) in self
             .friends
             .iter_mut()
@@ -107,7 +107,7 @@ impl Friends {
             let to = AccountId(*id);
             let payload = payload_for(friend.precision, sharing, location, now);
             if let Some(share) = rotate_if_due(friend, to, now)? {
-                out.push(share);
+                self.outbox.push(share);
             }
             let (session, _) = friend
                 .outbound_megolm
@@ -115,14 +115,13 @@ impl Friends {
                 .ok_or(CoreError::Crypto("no megolm session"))?;
             let message = session.encrypt(payload.encode()?);
             let envelope = LocationEnvelope::seal(&message.to_bytes())?;
-            out.push(Outgoing {
+            self.outbox.push(Outgoing {
                 to,
                 kind: EnvelopeKind::Location,
                 data: envelope.0.to_vec(),
             });
         }
-        self.save(store)?;
-        Ok(out)
+        self.save(store)
     }
 
     /// Обрабатывает последний пакет позиции от отправителя.
@@ -170,6 +169,7 @@ impl Friends {
                 event @ Event::LocationUpdated { .. } => handled.events.push(event),
                 Event::Dropped { .. }
                 | Event::FriendAdded { .. }
+                | Event::FriendRemoved { .. }
                 | Event::ProfileUpdated { .. } => {}
             }
         }

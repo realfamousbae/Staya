@@ -28,11 +28,13 @@ const INVITES_RECORD: &str = "invites";
 const PROFILE_RECORD: &str = "profile";
 
 mod location;
+mod outbox;
 pub use location::{Location, Sharing};
+pub use outbox::{PendingSends, QueuedEnvelope};
 
-/// Конверт, который платформа должна отправить на сервер.
+/// Конверт, созданный ядром; попадает в исходящую очередь.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Outgoing {
+struct Outgoing {
     pub to: AccountId,
     pub kind: EnvelopeKind,
     pub data: Vec<u8>,
@@ -43,6 +45,8 @@ pub struct Outgoing {
 pub enum Event {
     /// Дружба установлена (с обеих сторон или подтверждена другом).
     FriendAdded { friend: AccountId },
+    /// Друг удалил нас из друзей.
+    FriendRemoved { friend: AccountId },
     /// Друг обновил ник или аватар.
     ProfileUpdated { friend: AccountId },
     /// Новая позиция друга (в т. ч. `Hidden` — друг скрыл позицию от нас).
@@ -54,11 +58,10 @@ pub enum Event {
     Dropped { reason: &'static str },
 }
 
-/// Результат обработки: события для UI и конверты для отправки.
+/// Результат обработки: события для UI. Ответы ушли в исходящую очередь.
 #[derive(Debug, Default)]
 pub struct Handled {
     pub events: Vec<Event>,
-    pub outgoing: Vec<Outgoing>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -235,6 +238,7 @@ pub struct Friends {
     sharing: location::Sharing,
     /// Пакеты позиции от сессий, которых ещё нет (§7.5): по подсказке отправителя, только последний.
     held: Vec<([u8; 16], Vec<u8>)>,
+    outbox: outbox::Outbox,
 }
 
 impl Friends {
@@ -252,6 +256,7 @@ impl Friends {
             }),
             sharing: load_json(store, location::SHARING_RECORD)?.unwrap_or_default(),
             held: load_json(store, location::HELD_RECORD)?.unwrap_or_default(),
+            outbox: load_json(store, outbox::OUTBOX_RECORD)?.unwrap_or_default(),
         })
     }
 
@@ -272,7 +277,8 @@ impl Friends {
         save_json(store, INVITES_RECORD, &self.invites)?;
         save_json(store, PROFILE_RECORD, &self.profile)?;
         save_json(store, location::SHARING_RECORD, &self.sharing)?;
-        save_json(store, location::HELD_RECORD, &self.held)
+        save_json(store, location::HELD_RECORD, &self.held)?;
+        save_json(store, outbox::OUTBOX_RECORD, &self.outbox)
     }
 
     pub fn list(&self) -> Vec<FriendInfo> {
@@ -355,7 +361,7 @@ impl Friends {
         invite: &Invite,
         claimed: &ClaimResponse,
         now: i64,
-    ) -> Result<Outgoing, CoreError> {
+    ) -> Result<(), CoreError> {
         let me = account.identity();
         if invite.account_id == me.account_id {
             return Err(CoreError::InvalidInvite("own invite"));
@@ -420,34 +426,87 @@ impl Friends {
             precision: Precision::default(),
         };
         let out = encrypt_control(&mut record, invite.account_id, &request)?;
+        // Прошлая неподтверждённая попытка больше не нужна.
+        self.outbox.drop_for(&invite.account_id);
+        self.outbox.push(out);
         self.friends.insert(invite.account_id.0, record);
-        self.save(store)?;
-        Ok(out)
+        self.save(store)
     }
 
     /// Меняет свой профиль и рассылает его активным друзьям.
-    pub fn set_profile(
-        &mut self,
-        store: &Store,
-        profile: Profile,
-    ) -> Result<Vec<Outgoing>, CoreError> {
+    pub fn set_profile(&mut self, store: &Store, profile: Profile) -> Result<(), CoreError> {
         // Проверяем ограничения размеров до сохранения.
         ControlMessage::Profile(profile.clone()).encode()?;
         self.profile = StoredProfile::from(&profile);
-        let mut out = Vec::new();
         for (id, f) in self
             .friends
             .iter_mut()
             .filter(|(_, f)| f.state == FriendState::Active)
         {
-            out.push(encrypt_control(
+            self.outbox.push(encrypt_control(
                 f,
                 AccountId(*id),
                 &ControlMessage::Profile(profile.clone()),
             )?);
         }
-        self.save(store)?;
-        Ok(out)
+        self.save(store)
+    }
+
+    /// Что нужно отправить на сервер: сначала удаления слотов, затем управляющие
+    /// по порядку, затем позиции (§8.2).
+    pub fn pending_sends(&self) -> PendingSends {
+        self.outbox.pending()
+    }
+
+    /// Сервер принял конверты с этими номерами.
+    pub fn mark_sent(&mut self, store: &Store, ids: &[u64]) -> Result<(), CoreError> {
+        self.outbox.mark_sent(ids);
+        self.save(store)
+    }
+
+    /// Сервер окончательно отклонил конверты (§8.2): списываем, чтобы они не
+    /// повторялись вечно и не задерживали остальные.
+    pub fn mark_rejected(&mut self, store: &Store, ids: &[u64]) -> Result<(), CoreError> {
+        self.outbox.mark_sent(ids);
+        self.save(store)
+    }
+
+    /// Сервер подтвердил удаление нашего слота у получателя.
+    pub fn mark_slot_deleted(
+        &mut self,
+        store: &Store,
+        recipient: &AccountId,
+    ) -> Result<(), CoreError> {
+        self.outbox.mark_slot_deleted(recipient);
+        self.save(store)
+    }
+
+    /// Удаляет друга (§9): сессии уничтожаются, отправка прекращается, наш слот
+    /// у него удаляется на сервере. С `notify` друг получит `Unfriend`.
+    pub fn remove_friend(
+        &mut self,
+        store: &Store,
+        friend: &AccountId,
+        notify: bool,
+    ) -> Result<(), CoreError> {
+        let mut record = self
+            .friends
+            .remove(&friend.0)
+            .ok_or(CoreError::UnknownFriend)?;
+        self.forget(friend);
+        if notify && record.state == FriendState::Active {
+            let out = encrypt_control(&mut record, *friend, &ControlMessage::Unfriend)?;
+            self.outbox.push(out);
+        }
+        // `record` со всеми ключами выходит из области видимости здесь.
+        self.save(store)
+    }
+
+    /// Всё, что осталось от друга после удаления записи: очередь, отложенные пакеты, слот.
+    fn forget(&mut self, friend: &AccountId) {
+        self.outbox.drop_for(friend);
+        self.outbox.request_slot_deletion(friend);
+        self.held.retain(|(id, _)| *id != friend.0);
     }
 
     /// Обрабатывает управляющий конверт из очереди.
@@ -592,8 +651,7 @@ impl Friends {
                     session_key: SessionKeyBytes(outbound.session_key().to_bytes()),
                     profile: Profile::from(&self.profile),
                 };
-                handled
-                    .outgoing
+                self.outbox
                     .push(encrypt_control(record, friend_id, &accept)?);
                 if record.state != FriendState::Active {
                     record.state = FriendState::Active;
@@ -613,10 +671,13 @@ impl Friends {
                 self.retry_held(handled);
             }
             // Unfriend обрабатывается в задаче 2.6.
+            // Друг удалил нас: зеркально удаляем его и свой слот у него (§9).
             ControlMessage::Unfriend => {
-                handled.events.push(Event::Dropped {
-                    reason: "not implemented yet",
-                });
+                self.friends.remove(&friend_id.0);
+                self.forget(&friend_id);
+                handled
+                    .events
+                    .push(Event::FriendRemoved { friend: friend_id });
             }
         }
         Ok(())
@@ -703,8 +764,7 @@ impl Friends {
             inbound_megolm: vec![inbound],
             precision: Precision::default(),
         };
-        handled
-            .outgoing
+        self.outbox
             .push(encrypt_control(&mut record, account_id, &accept)?);
         self.friends.insert(account_id.0, record);
         handled

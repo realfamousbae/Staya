@@ -34,11 +34,10 @@ fn befriend(a: &mut Device, b: &mut Device, server: &mut FakeServer) {
         .create_invite(&a.store, &a.account.identity(), InviteMethod::Qr, T0)
         .unwrap();
     let invite = Invite::parse(&invite.to_uri()).unwrap();
-    let req = b
-        .friends
+    b.friends
         .accept_invite(&b.store, &b.account, &invite, &server.claim(a.id()), T0)
         .unwrap();
-    server.send(b.id(), req);
+    b.flush(server);
     a.sync(server, T0);
     b.sync(server, T0);
 }
@@ -51,11 +50,10 @@ fn setup() -> (Device, Device, FakeServer) {
 }
 
 fn send(dev: &mut Device, server: &mut FakeServer, loc: Option<Location>, now: i64) {
-    let outs = dev
-        .friends
+    dev.friends
         .prepare_location_update(&dev.store, loc, now)
         .unwrap();
-    server.send_all(dev.id(), outs);
+    dev.flush(server);
 }
 
 fn last_location(events: &[Event], from: AccountId) -> Option<LocationPayload> {
@@ -118,10 +116,11 @@ fn modes_are_indistinguishable_on_the_wire() {
         .friends
         .set_precision(&alice.store, &friends[2].id(), Precision::Hidden)
         .unwrap();
-    let outs = alice
+    alice
         .friends
         .prepare_location_update(&alice.store, Some(HOME), T0 + 5)
         .unwrap();
+    let outs = alice.take_pending();
     let locs: Vec<_> = outs
         .iter()
         .filter(|o| o.kind == EnvelopeKind::Location)
@@ -185,13 +184,16 @@ fn rotation_by_time_shares_key_before_packet() {
     send(&mut alice, &mut server, Some(at(T0 + 1)), T0 + 1);
     bob.fetch(&mut server, T0 + 2);
     let later = T0 + MEGOLM_ROTATION_AGE.as_secs() as i64 + 10;
-    let outs = alice
+    alice
         .friends
         .prepare_location_update(&alice.store, Some(at(later)), later)
         .unwrap();
+    let outs = alice.take_pending();
     let kinds: Vec<_> = outs.iter().map(|o| o.kind).collect();
     assert_eq!(kinds, vec![EnvelopeKind::Control, EnvelopeKind::Location]);
-    server.send_all(alice.id(), outs);
+    for env in &outs {
+        server.deliver(alice.id(), env);
+    }
     assert_eq!(
         last_location(&bob.fetch(&mut server, later + 1), alice.id())
             .unwrap()
@@ -227,10 +229,11 @@ fn replayed_and_rolled_back_packets_are_rejected() {
 fn packet_arriving_before_its_key_is_held_until_the_key_comes() {
     let (mut alice, mut bob, mut server) = setup();
     let later = T0 + MEGOLM_ROTATION_AGE.as_secs() as i64 + 10;
-    let outs = alice
+    alice
         .friends
         .prepare_location_update(&alice.store, Some(at(later)), later)
         .unwrap();
+    let outs = alice.take_pending();
     let (share, packet): (Vec<_>, Vec<_>) = outs
         .into_iter()
         .partition(|o| o.kind == EnvelopeKind::Control);
@@ -242,7 +245,9 @@ fn packet_arriving_before_its_key_is_held_until_the_key_comes() {
     assert!(matches!(h.events[..], [Event::Dropped { .. }]));
     // Отложенный пакет переживает перезапуск.
     bob.friends = Friends::load(&bob.store).unwrap();
-    server.send_all(alice.id(), share);
+    for env in &share {
+        server.deliver(alice.id(), env);
+    }
     let events: Vec<_> = bob
         .sync(&mut server, later + 1)
         .into_iter()
@@ -257,10 +262,11 @@ fn packet_is_attributed_by_session_not_by_server_label() {
     let (mut alice, mut bob, mut carol) = (Device::new(), Device::new(), Device::new());
     befriend(&mut alice, &mut bob, &mut server);
     befriend(&mut carol, &mut bob, &mut server);
-    let outs = alice
+    alice
         .friends
         .prepare_location_update(&alice.store, Some(HOME), T0 + 5)
         .unwrap();
+    let outs = alice.take_pending();
     // Сервер выдаёт пакет Алисы за пакет Кэрол.
     let h = bob
         .friends
@@ -317,10 +323,11 @@ fn packets_under_unknown_hints_are_not_held() {
     let mut server = FakeServer::default();
     let mut other = Device::new();
     befriend(&mut stranger, &mut other, &mut server);
-    let outs = stranger
+    stranger
         .friends
         .prepare_location_update(&stranger.store, Some(HOME), T0)
         .unwrap();
+    let outs = stranger.take_pending();
     for i in 0..10u8 {
         let hint = AccountId([i; 16]);
         alice
@@ -412,8 +419,7 @@ fn packet_before_friend_accept_is_held_and_then_shown() {
             T0,
         )
         .unwrap();
-    let req = bob
-        .friends
+    bob.friends
         .accept_invite(
             &bob.store,
             &bob.account,
@@ -422,12 +428,13 @@ fn packet_before_friend_accept_is_held_and_then_shown() {
             T0,
         )
         .unwrap();
-    server.send(bob.id(), req);
+    bob.flush(&mut server);
     alice.sync(&mut server, T0 + 1);
-    let outs = alice
+    alice
         .friends
         .prepare_location_update(&alice.store, Some(HOME), T0 + 2)
         .unwrap();
+    let outs = alice.take_pending();
     let packet = outs
         .into_iter()
         .find(|o| o.kind == EnvelopeKind::Location)
