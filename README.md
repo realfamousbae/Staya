@@ -1,5 +1,16 @@
 # Staya
 
+<!-- Статистика репозитория: обновляется раз в день .github/workflows/repo-stats.yml -->
+<p align="center">
+  <img src="https://github.com/realfamousbae/Staya/raw/repo-stats/overview.svg" width="100%" alt="overview">
+</p>
+<p align="center">
+  <img src="https://github.com/realfamousbae/Staya/raw/repo-stats/tiles.svg" width="100%" alt="tiles">
+</p>
+<p align="center">
+  <img src="https://github.com/realfamousbae/Staya/raw/repo-stats/largest-files.svg" width="100%" alt="largest-files">
+</p>
+
 Открытое мобильное приложение для iOS и Android, чтобы делиться геопозицией с небольшим кругом друзей. Координаты шифруются на устройстве сквозным шифрованием (Olm/Megolm через [vodozemac](https://github.com/matrix-org/vodozemac)), сервер хранит только шифротекст последнего пакета.
 
 > Статус: ранняя разработка, этап 0. Пользоваться пока нельзя.

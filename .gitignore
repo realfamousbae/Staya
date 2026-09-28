@@ -32,3 +32,7 @@ ios/StayaCore/Sources/StayaCore/*.swift
 
 # Сборка Swift Package
 ios/StayaCore/.build/
+
+# Копии-конфликты облачной синхронизации (iCloud Drive: «файл 2.rs»).
+* [0-9].*
+* [0-9]

@@ -1,0 +1,39 @@
+name: Repository stats
+
+# Публикует SVG-карточки для README в отдельную ветку `repo-stats` (без общей
+# истории с main), поэтому обновления не трогают main и не запускают CI.
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repo-stats
+  cancel-in-progress: true
+
+jobs:
+  cards:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # Node 22 предустановлен на ubuntu-24.04; скрипт без зависимостей.
+      - run: node scripts/repo-stats-badges.mjs "$RUNNER_TEMP/repo-stats"
+      - name: Publish to the repo-stats branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd "$RUNNER_TEMP/repo-stats"
+          git init -q -b repo-stats
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -q -m "chore: update repository stats"
+          git push -f "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" repo-stats
