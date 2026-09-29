@@ -146,7 +146,8 @@ MVP — это минимум, при котором Staya уже можно п�
 
 Прототип не отправляет координаты вообще: только метрики (время, триггер, состояние приложения, точность в метрах, скорость по корзинам, заряд, режим энергосбережения, результат и задержка отправки).
 
-- [ ] 1.1 VPS + домен/deSEC, укрепление (SSH по ключу, ufw, unattended-upgrades), Docker Compose + Caddy, `tools/probe-server`
+- [ ] 1.1 VPS + домен/deSEC, укрепление (SSH по ключу, отдельный пользователь, вход по паролю выключен, ufw, unattended-upgrades), Docker Compose + Caddy, `tools/probe-server`. Образы собирает GitHub Actions (ghcr.io), на VPS не компилируем: 1 vCPU / 2 ГБ
+- [ ] 1.1a Установка на iPhone без локального Xcode 27: CI (macOS-раннер) собирает неподписанный `.ipa`, установка через AltStore/SideStore со своим Apple ID; проверить на iPhone автора (iOS 27) до начала 1.2
 - [ ] 1.2 iOS `LocationEngine`, стратегии: S1 — SLC; S2 — SLC + визиты; S3 — непрерывные обновления (`distanceFilter` 100 м) + `CLBackgroundActivitySession`/`CLServiceSession`; S4 — адаптивная через `CMMotionActivity`
 - [ ] 1.3 Android `LocationEngine`: foreground service типа `location`, `LocationManager`, significant motion; инструкция по энергосбережению Xiaomi и Samsung; запуск после перезагрузки на Android 14–16
 - [ ] 1.4 Сутки замеров: iPhone 13 Pro Max, Samsung S23 Ultra, Poco. Сценарии: покой, город, транспорт, принудительное закрытие, перезагрузка; доступность VPS у операторов
@@ -204,7 +205,7 @@ MVP — это минимум, при котором Staya уже можно п�
 
 ### Проверить по ходу
 
-- Установка на iPhone: Xcode 26 требует компонент iOS-платформы (~8 ГБ); iPhone автора на iOS 27 требует Xcode 27, а тот — macOS Tahoe 26.6+ (сейчас Sequoia 15.7.9). Решить до этапа 1
+- Установка на iPhone через AltStore/SideStore: работает ли фоновая геолокация и Keychain при переподписи своим Apple ID (1.1a)
 - Старый Poco: если окажется 32-битным (armeabi-v7a), добавить таргет в `scripts/build-android-core.sh` и `abiFilters`
 - Перезапуск iOS-приложения после принудительного закрытия при SLC и `CLServiceSession` (1.4)
 - Запуск location foreground service после перезагрузки на Android 14–16 (1.3)
@@ -218,8 +219,9 @@ MVP — это минимум, при котором Staya уже можно п�
 | Лицензия | AGPL-3.0; для App Store — CLA для сторонних контрибьюторов |
 | Репозиторий | Публичный GitHub `realfamousbae/Staya`, коммиты с noreply-адреса |
 | Apple Developer Program | Пока нет: iOS через Personal Team (переподпись раз в 7 дней), без APNs, TestFlight и universal links |
+| Mac и Xcode | Остаёмся на macOS Sequoia 15.7.9 и Xcode 26.3 (обновление не планируется). Разработка — в симуляторе; на iPhone с iOS 27 — `.ipa` из CI с Xcode 27 через AltStore/SideStore; iPhone друга с iOS 18 — напрямую из Xcode 26.3 |
 | Пуши | В MVP нет ни на одной платформе |
-| Хостинг | VPS Play2Go (Германия): KVM, ≥2 ГБ RAM, ≥20 ГБ NVMe, IPv4, Ubuntu 24.04 |
+| Хостинг | VPS Play2Go LC-1 (Финляндия): KVM, 1 vCPU, 2 ГБ RAM, 40 ГБ, IPv4, Ubuntu 24.04. Доступ только по SSH-ключу; пароли в чат не передаются |
 | Карта | Только город/область |
 | История перемещений | Нет, даже локально |
 | Потеря телефона | В MVP — заново добавить друзей; резервная копия — «Позже» |
