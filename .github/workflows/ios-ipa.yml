@@ -1,0 +1,61 @@
+name: iOS IPA
+
+# Неподписанный .ipa для установки через AltStore/SideStore своим Apple ID
+# (docs/PLAN.md, задача 1.1a). Локальный Xcode 26.3 не ставит на iOS 27,
+# поэтому собираем самым новым Xcode на раннере.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'ios/**'
+      - 'core/**'
+      - 'proto/**'
+      - 'scripts/build-ios-core.sh'
+      - '.github/workflows/ios-ipa.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-ipa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ipa:
+    name: Unsigned IPA
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Select the newest Xcode
+        run: |
+          ls -d /Applications/Xcode*.app
+          XCODE=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
+      - run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Build core XCFramework (release)
+        run: scripts/build-ios-core.sh release
+      - name: Build app for devices without signing
+        run: |
+          xcodebuild -project ios/Staya.xcodeproj -scheme Staya -configuration Release \
+            -destination 'generic/platform=iOS' -derivedDataPath "$RUNNER_TEMP/dd" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= build | tail -n 20
+          test "${PIPESTATUS[0]}" -eq 0
+      - name: Package IPA
+        run: |
+          APP="$RUNNER_TEMP/dd/Build/Products/Release-iphoneos/Staya.app"
+          test -d "$APP"
+          mkdir -p "$RUNNER_TEMP/ipa/Payload"
+          cp -R "$APP" "$RUNNER_TEMP/ipa/Payload/"
+          (cd "$RUNNER_TEMP/ipa" && zip -qry Staya.ipa Payload)
+          ls -lh "$RUNNER_TEMP/ipa/Staya.ipa"
+          echo "XCODE_VERSION=$(xcodebuild -version | head -1 | tr ' ' '-')" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: Staya-unsigned-${{ env.XCODE_VERSION }}
+          path: ${{ runner.temp }}/ipa/Staya.ipa
+          retention-days: 14
+          if-no-files-found: error

@@ -36,3 +36,6 @@ ios/StayaCore/.build/
 # Копии-конфликты облачной синхронизации (iCloud Drive: «файл 2.rs»).
 * [0-9].*
 * [0-9]
+
+# Профили LLVM
+*.profraw

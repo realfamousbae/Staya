@@ -8,6 +8,9 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PKG="$ROOT/ios/StayaCore"
 OUT="$PKG/Generated"
 TARGETS=(aarch64-apple-ios aarch64-apple-ios-sim)
+# Та же минимальная версия, что у приложения (ios/Config/Base.xcconfig): иначе
+# C-код (SQLite) собирается под текущий SDK и не запустится на iOS 18.
+export IPHONEOS_DEPLOYMENT_TARGET=18.0
 
 cd "$ROOT"
 rustup target add "${TARGETS[@]}" >/dev/null
