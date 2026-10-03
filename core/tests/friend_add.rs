@@ -9,6 +9,10 @@ use staya_proto::api::B64;
 use staya_proto::control::Profile;
 use staya_proto::invite::{Invite, InviteMethod};
 
+fn staya_test_server() -> staya_proto::invite::ServerRef {
+    staya_proto::invite::ServerRef::new("staya.test", None).unwrap()
+}
+
 const T0: i64 = 1_700_000_000;
 
 fn events(handled: &[staya_core::friends::Handled]) -> Vec<Event> {
@@ -43,7 +47,13 @@ fn befriend(method: InviteMethod) -> (Device, Device, FakeServer) {
 
     let invite = alice
         .friends
-        .create_invite(&alice.store, &alice.account.identity(), method, T0)
+        .create_invite(
+            &alice.store,
+            &alice.account.identity(),
+            &staya_test_server(),
+            method,
+            T0,
+        )
         .unwrap();
     // Приглашение проходит через текст (QR или ссылку).
     let invite = Invite::parse(&invite.to_uri()).unwrap();
@@ -136,6 +146,7 @@ fn token_is_single_use() {
         .create_invite(
             &alice.store,
             &alice.account.identity(),
+            &staya_test_server(),
             InviteMethod::Qr,
             T0,
         )
@@ -184,6 +195,7 @@ fn expired_token_is_rejected() {
         .create_invite(
             &alice.store,
             &alice.account.identity(),
+            &staya_test_server(),
             InviteMethod::Qr,
             T0,
         )
@@ -219,6 +231,7 @@ fn forged_one_time_key_is_rejected() {
         .create_invite(
             &alice.store,
             &alice.account.identity(),
+            &staya_test_server(),
             InviteMethod::Qr,
             T0,
         )
@@ -261,6 +274,7 @@ fn server_cannot_spoof_the_sender_of_a_request() {
         .create_invite(
             &alice.store,
             &alice.account.identity(),
+            &staya_test_server(),
             InviteMethod::Qr,
             T0,
         )
@@ -301,6 +315,7 @@ fn works_on_fallback_key_when_otks_run_out() {
         .create_invite(
             &alice.store,
             &alice.account.identity(),
+            &staya_test_server(),
             InviteMethod::Qr,
             T0,
         )
@@ -330,6 +345,7 @@ fn cannot_accept_own_invite_or_befriend_twice() {
         .create_invite(
             &alice.store,
             &alice.account.identity(),
+            &staya_test_server(),
             InviteMethod::Qr,
             T0,
         )
@@ -378,6 +394,7 @@ fn can_accept_a_fresh_invite_after_the_first_one_expired() {
         .create_invite(
             &alice.store,
             &alice.account.identity(),
+            &staya_test_server(),
             InviteMethod::Qr,
             T0,
         )
@@ -401,6 +418,7 @@ fn can_accept_a_fresh_invite_after_the_first_one_expired() {
         .create_invite(
             &alice.store,
             &alice.account.identity(),
+            &staya_test_server(),
             InviteMethod::Qr,
             T0 + 3600,
         )
@@ -437,6 +455,7 @@ fn redelivered_messages_do_not_duplicate_or_fail() {
         .create_invite(
             &alice.store,
             &alice.account.identity(),
+            &staya_test_server(),
             InviteMethod::Qr,
             T0,
         )
@@ -481,13 +500,20 @@ fn simultaneous_mutual_invites_do_not_wedge() {
         .create_invite(
             &alice.store,
             &alice.account.identity(),
+            &staya_test_server(),
             InviteMethod::Qr,
             T0,
         )
         .unwrap();
     let b_inv = bob
         .friends
-        .create_invite(&bob.store, &bob.account.identity(), InviteMethod::Qr, T0)
+        .create_invite(
+            &bob.store,
+            &bob.account.identity(),
+            &staya_test_server(),
+            InviteMethod::Qr,
+            T0,
+        )
         .unwrap();
 
     // Оба сканируют QR друг друга до того, как получили что-либо.

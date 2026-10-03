@@ -11,6 +11,10 @@ use staya_proto::consts::{LOCATION_ENVELOPE_LEN, MEGOLM_ROTATION_AGE};
 use staya_proto::invite::{Invite, InviteMethod};
 use staya_proto::location::{LocationKind, LocationPayload, snap_to_grid};
 
+fn staya_test_server() -> staya_proto::invite::ServerRef {
+    staya_proto::invite::ServerRef::new("staya.test", None).unwrap()
+}
+
 const T0: i64 = 1_700_000_000;
 const HOME: Location = Location {
     lat_e7: 557_558_000,
@@ -31,7 +35,13 @@ fn befriend(a: &mut Device, b: &mut Device, server: &mut FakeServer) {
     server.publish(a, T0);
     let invite = a
         .friends
-        .create_invite(&a.store, &a.account.identity(), InviteMethod::Qr, T0)
+        .create_invite(
+            &a.store,
+            &a.account.identity(),
+            &staya_test_server(),
+            InviteMethod::Qr,
+            T0,
+        )
         .unwrap();
     let invite = Invite::parse(&invite.to_uri()).unwrap();
     b.friends
@@ -415,6 +425,7 @@ fn packet_before_friend_accept_is_held_and_then_shown() {
         .create_invite(
             &alice.store,
             &alice.account.identity(),
+            &staya_test_server(),
             InviteMethod::Qr,
             T0,
         )

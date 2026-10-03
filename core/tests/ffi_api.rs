@@ -160,9 +160,15 @@ fn befriend(alice: &App, bob: &App, server: &mut JsonServer) {
     server.publish(&alice.id, &keys);
     alice.core.mark_keys_published().unwrap();
 
-    let uri = alice.core.create_invite(InviteMethod::Qr, T0).unwrap();
+    let uri = alice
+        .core
+        .create_invite("staya.test".into(), None, InviteMethod::Qr, T0)
+        .unwrap();
     let info = bob.core.parse_invite(uri.clone()).unwrap();
     assert_eq!(info.account_id, alice.id);
+    // Друг подключится к серверу пригласившего (protocol §5.3).
+    assert_eq!(info.server, "staya.test");
+    assert_eq!(info.server_pin, None);
     bob.core
         .accept_invite(uri, server.claim(&info.account_id), T0)
         .unwrap();
@@ -295,6 +301,33 @@ fn only_one_open_handle_and_only_the_right_key() {
     assert!(matches!(
         StayaCore::open(path, vec![1; 16]),
         Err(CoreError::InvalidKey)
+    ));
+}
+
+#[test]
+fn invite_carries_server_and_pin() {
+    let app = App::new();
+    let uri = app
+        .core
+        .create_invite(
+            "Self.Hosted.Example:8443".into(),
+            Some(vec![5; 32]),
+            InviteMethod::Link,
+            T0,
+        )
+        .unwrap();
+    let info = app.core.parse_invite(uri).unwrap();
+    assert_eq!(info.server, "self.hosted.example:8443");
+    assert_eq!(info.server_pin, Some(vec![5; 32]));
+    assert!(matches!(
+        app.core
+            .create_invite("bad host".into(), None, InviteMethod::Qr, T0),
+        Err(CoreError::Proto(_))
+    ));
+    assert!(matches!(
+        app.core
+            .create_invite("ok.example".into(), Some(vec![1; 5]), InviteMethod::Qr, T0),
+        Err(CoreError::Invalid(_))
     ));
 }
 

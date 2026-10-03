@@ -27,9 +27,10 @@ class CoreBindingsTest {
             val me = core.identity()
             assertEquals(22, me.accountId.length)
 
-            val invite = core.createInvite(InviteMethod.QR, 1_700_000_000)
+            val invite = core.createInvite("staya.test", null, InviteMethod.QR, 1_700_000_000)
             assertTrue(invite.startsWith("staya://add?"))
             assertEquals(me.accountId, core.parseInvite(invite).accountId)
+            assertEquals("staya.test", core.parseInvite(invite).server)
 
             assertTrue(core.keysToPublish(0u, 1_700_000_000)!!.contains("one_time_keys"))
             assertTrue(core.listFriends().isEmpty())

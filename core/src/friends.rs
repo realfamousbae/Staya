@@ -8,7 +8,7 @@ use staya_proto::api::{ClaimResponse, EnvelopeKind};
 use staya_proto::consts::{INVITE_TTL_LINK, INVITE_TTL_QR, OLM_SESSIONS_PER_FRIEND};
 use staya_proto::control::{ControlMessage, Profile, SessionKeyBytes};
 use staya_proto::envelope::{ControlEnvelope, OlmType};
-use staya_proto::invite::{Invite, InviteMethod};
+use staya_proto::invite::{Invite, InviteMethod, ServerRef};
 use staya_proto::signing;
 use vodozemac::megolm::{
     GroupSession, GroupSessionPickle, InboundGroupSession, InboundGroupSessionPickle,
@@ -318,10 +318,13 @@ impl Friends {
     }
 
     /// Создаёт приглашение (A-сторона, §5 шаги 1–2).
+    /// `server` — сервер, на котором живёт этот аккаунт (protocol §5.3): друг
+    /// подключится к нему же.
     pub fn create_invite(
         &mut self,
         store: &Store,
         me: &Identity,
+        server: &ServerRef,
         method: InviteMethod,
         now: i64,
     ) -> Result<Invite, CoreError> {
@@ -339,6 +342,7 @@ impl Friends {
         });
         self.save(store)?;
         Ok(Invite {
+            server: server.clone(),
             account_id: me.account_id,
             ik: me.ik,
             sk: me.sk,

@@ -11,7 +11,7 @@ use staya_proto::AccountId;
 use staya_proto::api::{ClaimResponse, EnvelopeKind};
 use staya_proto::control::ControlMessage;
 use staya_proto::envelope::{ControlEnvelope, LocationEnvelope};
-use staya_proto::invite::{Invite, InviteMethod};
+use staya_proto::invite::{Invite, InviteMethod, ServerRef};
 use staya_proto::location::LocationPayload;
 
 use crate::account::LocalAccount;
@@ -91,6 +91,7 @@ fn befriended_pair() -> (Device, Device) {
         .create_invite(
             &alice.store,
             &alice.account.identity(),
+            &ServerRef::new("staya.test", None).expect("server"),
             InviteMethod::Qr,
             T0,
         )

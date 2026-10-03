@@ -10,6 +10,10 @@ use staya_proto::consts::MEGOLM_ROTATION_AGE;
 use staya_proto::invite::InviteMethod;
 use staya_proto::location::LocationPayload;
 
+fn staya_test_server() -> staya_proto::invite::ServerRef {
+    staya_proto::invite::ServerRef::new("staya.test", None).unwrap()
+}
+
 const T0: i64 = 1_700_000_000;
 const HOME: Location = Location {
     lat_e7: 557_558_000,
@@ -30,7 +34,13 @@ fn befriend(a: &mut Device, b: &mut Device, server: &mut FakeServer, now: i64) {
     server.publish(a, now);
     let invite = a
         .friends
-        .create_invite(&a.store, &a.account.identity(), InviteMethod::Qr, now)
+        .create_invite(
+            &a.store,
+            &a.account.identity(),
+            &staya_test_server(),
+            InviteMethod::Qr,
+            now,
+        )
         .unwrap();
     b.friends
         .accept_invite(&b.store, &b.account, &invite, &server.claim(a.id()), now)
@@ -153,6 +163,7 @@ fn slot_deletion_survives_restart_and_runs_before_new_packets() {
         .create_invite(
             &alice.store,
             &alice.account.identity(),
+            &staya_test_server(),
             InviteMethod::Qr,
             T0 + 5,
         )
@@ -213,6 +224,7 @@ fn reply_survives_a_crash_between_processing_and_sending() {
         .create_invite(
             &alice.store,
             &alice.account.identity(),
+            &staya_test_server(),
             InviteMethod::Qr,
             T0,
         )

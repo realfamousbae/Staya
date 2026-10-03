@@ -15,7 +15,7 @@ use staya_proto::api::{
     SendResponse, WsEvent,
 };
 use staya_proto::control::Profile;
-use staya_proto::invite::{Invite, InviteMethod as ProtoInviteMethod};
+use staya_proto::invite::{Invite, InviteMethod as ProtoInviteMethod, ServerRef};
 use staya_proto::location::{LocationKind as ProtoLocationKind, LocationPayload};
 
 use crate::CoreError;
@@ -64,6 +64,10 @@ pub struct IdentityInfo {
 /// Кому и чей одноразовый ключ запросить перед `accept_invite`.
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
 pub struct InviteInfo {
+    /// Сервер пригласившего (`host` или `host:port`): подключаться к нему (protocol §5.3).
+    pub server: String,
+    /// Отпечаток ключа TLS сервера (SHA-256 SPKI), если он был в приглашении.
+    pub server_pin: Option<Vec<u8>>,
     pub account_id: String,
     pub method: InviteMethod,
 }
@@ -263,7 +267,21 @@ impl StayaCore {
     }
 
     /// Ссылка `staya://add?...` для QR или отправки другу.
-    pub fn create_invite(&self, method: InviteMethod, now: i64) -> Result<String, CoreError> {
+    /// `server` — сервер этого аккаунта (`host` или `host:port`), `server_pin` —
+    /// необязательный SHA-256 от SPKI его ключа TLS (protocol §5.3).
+    pub fn create_invite(
+        &self,
+        server: String,
+        server_pin: Option<Vec<u8>>,
+        method: InviteMethod,
+        now: i64,
+    ) -> Result<String, CoreError> {
+        let pin = server_pin
+            .map(|p| {
+                <[u8; 32]>::try_from(p.as_slice()).map_err(|_| CoreError::Invalid("server pin"))
+            })
+            .transpose()?;
+        let server = ServerRef::new(&server, pin)?;
         let mut g = self.lock()?;
         let Inner {
             store,
@@ -271,7 +289,7 @@ impl StayaCore {
             friends,
         } = &mut *g;
         Ok(friends
-            .create_invite(store, &account.identity(), method.into(), now)?
+            .create_invite(store, &account.identity(), &server, method.into(), now)?
             .to_uri())
     }
 
@@ -283,6 +301,8 @@ impl StayaCore {
             ProtoInviteMethod::Link => InviteMethod::Link,
         };
         Ok(InviteInfo {
+            server: invite.server.host.clone(),
+            server_pin: invite.server.pin.map(|p| p.to_vec()),
             account_id: invite.account_id.to_b64(),
             method,
         })
