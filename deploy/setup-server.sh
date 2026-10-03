@@ -19,6 +19,28 @@ net.ipv4.tcp_base_mss = 1024
 CONF
 sysctl -q --system
 
+# Реальный MTU канала провайдера меньше 1500, а ICMP «нужна фрагментация» до
+# сервера не доходит: крупные пакеты с внешних серверов терялись (TLS-рукопожатие
+# с ghcr.io и Docker Hub обрывалось в 25–33% попыток, с MTU 1400 — 0 из 30).
+# Отдельная служба, а не правка netplan: ошибка в ней не отрежет сервер от сети.
+IFACE="$(ip -o -4 route show to default | awk '{print $5; exit}')"
+cat > /etc/systemd/system/staya-mtu.service <<UNIT
+[Unit]
+Description=Lower MTU on the uplink (provider path MTU < 1500)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/ip link set ${IFACE} mtu 1400
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+systemctl daemon-reload
+systemctl enable --now staya-mtu.service >/dev/null
+
 # --- Обновления ---------------------------------------------------------------
 export DEBIAN_FRONTEND=noninteractive
 apt-get -qq update
