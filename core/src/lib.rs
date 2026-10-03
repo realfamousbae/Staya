@@ -2,6 +2,8 @@
 
 pub mod account;
 pub mod friends;
+#[cfg(any(test, feature = "fuzzing"))]
+pub mod fuzzing;
 pub mod safety;
 pub mod store;
 

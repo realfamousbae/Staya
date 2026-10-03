@@ -42,7 +42,7 @@ impl Store {
         Self::init(Connection::open(path)?, key)
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "fuzzing"))]
     pub fn open_in_memory(key: &DbKey) -> Result<Self, CoreError> {
         Self::init(Connection::open_in_memory()?, key)
     }

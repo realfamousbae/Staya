@@ -14,6 +14,10 @@ workspace = true
 crate-type = ["lib", "staticlib", "cdylib"]
 name = "staya_core"
 
+[features]
+# Цели fuzzing (core/src/fuzzing.rs) для core/fuzz; в обычную сборку не входят.
+fuzzing = []
+
 [dependencies]
 uniffi = { workspace = true }
 staya-proto = { path = "../proto" }
@@ -28,4 +32,5 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
+proptest = { workspace = true }
 tempfile = "3.27.0"

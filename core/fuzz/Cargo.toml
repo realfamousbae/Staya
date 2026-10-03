@@ -1,0 +1,40 @@
+# Цели libFuzzer для ядра (задача 2.7). Запуск (нужен nightly и cargo-fuzz):
+#   cd core && cargo +nightly fuzz run control
+# Сами тела целей — в core/src/fuzzing.rs; их же гоняют обычные тесты.
+[package]
+name = "staya-core-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+license = "AGPL-3.0-only"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4.13"
+staya-core = { path = "..", features = ["fuzzing"] }
+
+# Отдельно от workspace проекта: собирается только на nightly.
+[workspace]
+
+[[bin]]
+name = "control"
+path = "fuzz_targets/control.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "location"
+path = "fuzz_targets/location.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "decode"
+path = "fuzz_targets/decode.rs"
+test = false
+doc = false
+bench = false

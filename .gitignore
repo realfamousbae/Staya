@@ -39,3 +39,9 @@ ios/StayaCore/.build/
 
 # Профили LLVM
 *.profraw
+
+# cargo-fuzz
+core/fuzz/target/
+core/fuzz/corpus/
+core/fuzz/artifacts/
+core/fuzz/coverage/

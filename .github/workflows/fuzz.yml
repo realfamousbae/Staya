@@ -1,0 +1,60 @@
+name: Fuzz
+
+# libFuzzer по целям из core/src/fuzzing.rs (задача 2.7). Короткие прогоны:
+# каждую ночь, вручную и на PR, меняющих ядро или протокол.
+on:
+  schedule:
+    - cron: '30 2 * * *'
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: Секунд на каждую цель
+        default: '180'
+  pull_request:
+    paths:
+      - 'core/**'
+      - 'proto/**'
+      - '.github/workflows/fuzz.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fuzz-${{ github.event_name }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fuzz:
+    name: Fuzz ${{ matrix.target }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [control, location, decode]
+    env:
+      SECONDS_PER_TARGET: ${{ github.event.inputs.seconds || (github.event_name == 'pull_request' && '60') || '180' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install nightly --profile minimal
+      - uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29 # v2.87.21
+        with:
+          tool: cargo-fuzz
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: core/fuzz
+      - name: Run ${{ matrix.target }}
+        working-directory: core
+        # Готовый cargo-fuzz собран под musl и по умолчанию берёт эту цель,
+        # а санитайзер со статическим libc не работает — задаём цель явно.
+        run: >-
+          cargo +nightly fuzz run --target x86_64-unknown-linux-gnu ${{ matrix.target }} --
+          -max_total_time="$SECONDS_PER_TARGET" -rss_limit_mb=2048
+      - name: Upload crash inputs
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fuzz-${{ matrix.target }}-artifacts
+          path: core/fuzz/artifacts/
+          retention-days: 30
