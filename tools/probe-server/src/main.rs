@@ -41,6 +41,30 @@ enum Trigger {
     Motion,
     Foreground,
     Boot,
+    /// Адаптивная стратегия включила непрерывные обновления (в т. ч. из фона).
+    ContinuousStart,
+    /// Адаптивная стратегия выключила непрерывные обновления.
+    ContinuousStop,
+}
+
+/// Разрешение на геолокацию.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum Auth {
+    Always,
+    WhenInUse,
+    Denied,
+    Restricted,
+    NotDetermined,
+}
+
+/// Фоновое обновление приложений (iOS) / ограничение фона (Android).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum BgRefresh {
+    Available,
+    Denied,
+    Restricted,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -84,6 +108,12 @@ struct Probe {
     prev_send_ms: Option<u32>,
     /// Сколько предыдущих отправок не удалось.
     prev_send_failures: u32,
+    auth: Auth,
+    /// Точная геолокация (`false` — пользователь дал только примерную).
+    precise: bool,
+    bg_refresh: Option<BgRefresh>,
+    /// Сколько событий геолокации было с прошлой отправки (отправки ограничены по частоте).
+    events_since_last: u32,
 }
 
 impl Probe {
@@ -174,7 +204,10 @@ async fn append(state: &AppStateInner, now: i64, line: &[u8]) -> std::io::Result
         .append(true)
         .open(path)
         .await?;
-    file.write_all(line).await
+    file.write_all(line).await?;
+    // У tokio::fs::File запись идёт в фоне: без flush строка может оказаться в файле
+    // после ответа 204 или потеряться при закрытии файла.
+    file.flush().await
 }
 
 fn unix_now() -> i64 {
@@ -227,7 +260,8 @@ mod tests {
             "device": "dev-1", "platform": "ios", "strategy": "s3", "event_ts": 1_700_000_000,
             "trigger": "continuous", "app_state": "background", "accuracy_m": 12, "speed": "walking",
             "battery_pct": 87, "charging": false, "low_power": false,
-            "prev_send_ms": 420, "prev_send_failures": 0
+            "prev_send_ms": 420, "prev_send_failures": 0,
+            "auth": "always", "precise": true, "bg_refresh": "available", "events_since_last": 3
         })
     }
 
@@ -331,6 +365,26 @@ mod tests {
             post(&router, Some(TOKEN), b"not json".to_vec()).await,
             StatusCode::UNPROCESSABLE_ENTITY
         );
+    }
+
+    #[tokio::test]
+    async fn accepts_mode_switch_triggers_and_missing_optionals() {
+        let (dir, router) = setup();
+        let mut body = sample();
+        body["trigger"] = serde_json::json!("continuous_start");
+        body["bg_refresh"] = serde_json::Value::Null;
+        body["accuracy_m"] = serde_json::Value::Null;
+        assert_eq!(
+            post(&router, Some(TOKEN), serde_json::to_vec(&body).unwrap()).await,
+            StatusCode::NO_CONTENT
+        );
+        let mut no_auth = sample();
+        no_auth.as_object_mut().unwrap().remove("auth");
+        assert_eq!(
+            post(&router, Some(TOKEN), serde_json::to_vec(&no_auth).unwrap()).await,
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+        assert_eq!(stored(&dir).lines().count(), 1);
     }
 
     #[tokio::test]
