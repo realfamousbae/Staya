@@ -85,6 +85,29 @@ enum SpeedBucket {
     Driving,
 }
 
+/// Корзина App Standby (Android): чем ниже, тем жёстче система ограничивает фон.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum StandbyBucket {
+    Exempted,
+    Active,
+    WorkingSet,
+    Frequent,
+    Rare,
+    Restricted,
+    Unknown,
+}
+
+/// Источник геолокации, который реально использовался (Android).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum Provider {
+    Fused,
+    Gps,
+    Network,
+    Passive,
+}
+
 /// Одна метрика с устройства. Координат здесь нет и быть не может.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -114,6 +137,24 @@ struct Probe {
     bg_refresh: Option<BgRefresh>,
     /// Сколько событий геолокации было с прошлой отправки (отправки ограничены по частоте).
     events_since_last: u32,
+    // Поля Android: от них зависит, убьёт ли процесс производитель телефона.
+    // На iOS их нет — отсутствующее поле читается как null.
+    /// Приложение исключено из оптимизации батареи.
+    #[serde(default)]
+    battery_opt_exempt: Option<bool>,
+    /// Пользователь ограничил фоновую работу приложения.
+    #[serde(default)]
+    bg_restricted: Option<bool>,
+    #[serde(default)]
+    standby_bucket: Option<StandbyBucket>,
+    /// Устройство в режиме Doze.
+    #[serde(default)]
+    doze: Option<bool>,
+    #[serde(default)]
+    provider: Option<Provider>,
+    /// Есть ли датчик значимого движения (для адаптивной стратегии).
+    #[serde(default)]
+    sig_motion: Option<bool>,
 }
 
 impl Probe {
@@ -385,6 +426,60 @@ mod tests {
             StatusCode::UNPROCESSABLE_ENTITY
         );
         assert_eq!(stored(&dir).lines().count(), 1);
+    }
+
+    #[tokio::test]
+    async fn accepts_android_fields_and_ios_records_without_them() {
+        let (dir, router) = setup();
+        // Запись iOS — без полей Android — по-прежнему принимается.
+        assert_eq!(
+            post(&router, Some(TOKEN), serde_json::to_vec(&sample()).unwrap()).await,
+            StatusCode::NO_CONTENT
+        );
+        let mut android = sample();
+        android["platform"] = serde_json::json!("android");
+        android["bg_refresh"] = serde_json::Value::Null;
+        android["battery_opt_exempt"] = serde_json::json!(false);
+        android["bg_restricted"] = serde_json::json!(false);
+        android["standby_bucket"] = serde_json::json!("working_set");
+        android["doze"] = serde_json::json!(true);
+        android["provider"] = serde_json::json!("fused");
+        android["sig_motion"] = serde_json::json!(true);
+        assert_eq!(
+            post(&router, Some(TOKEN), serde_json::to_vec(&android).unwrap()).await,
+            StatusCode::NO_CONTENT
+        );
+        for bucket in [
+            "exempted",
+            "active",
+            "working_set",
+            "frequent",
+            "rare",
+            "restricted",
+            "unknown",
+        ] {
+            let mut r = android.clone();
+            r["standby_bucket"] = serde_json::json!(bucket);
+            assert_eq!(
+                post(&router, Some(TOKEN), serde_json::to_vec(&r).unwrap()).await,
+                StatusCode::NO_CONTENT
+            );
+        }
+        for provider in ["fused", "gps", "network", "passive"] {
+            let mut r = android.clone();
+            r["provider"] = serde_json::json!(provider);
+            assert_eq!(
+                post(&router, Some(TOKEN), serde_json::to_vec(&r).unwrap()).await,
+                StatusCode::NO_CONTENT
+            );
+        }
+        let mut bad = android.clone();
+        bad["standby_bucket"] = serde_json::json!("sleepy");
+        assert_eq!(
+            post(&router, Some(TOKEN), serde_json::to_vec(&bad).unwrap()).await,
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+        assert_eq!(stored(&dir).lines().count(), 13);
     }
 
     #[tokio::test]
