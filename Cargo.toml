@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["proto", "core", "server", "tools/uniffi-bindgen"]
+members = ["proto", "core", "server", "tools/uniffi-bindgen", "tools/probe-server"]
 exclude = ["core/fuzz"]
 
 [workspace.package]
@@ -22,6 +22,9 @@ rusqlite = { version = "0.40.2", features = ["bundled"] }
 chacha20poly1305 = "0.11.0"
 zeroize = "1.9.0"
 getrandom = "0.4.3"
+axum = { version = "0.8.9", default-features = false, features = ["http1", "json", "tokio"] }
+tokio = { version = "1.53.2", features = ["rt-multi-thread", "macros", "net", "fs", "io-util", "signal", "sync"] }
+tower = { version = "0.5.3", features = ["util"] }
 sha2 = "0.11.0"
 
 [workspace.lints.rust]

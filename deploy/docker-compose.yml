@@ -1,0 +1,41 @@
+# Сервисы на VPS (docs/server.md). Деплой: deploy/deploy.sh с Mac.
+name: staya
+
+services:
+  caddy:
+    # 2-alpine на 03.10.2026
+    image: caddy:2-alpine@sha256:881bbc60f9986d5ab8e7cfd6cf7e4ef3c9c0439fef2429d035d065577882f028
+    # Сеть хоста: только Caddy слушает 80/443, а net.ipv4.tcp_mtu_probing хоста
+    # действует и на TLS (в отдельном namespace контейнера он был бы выключен,
+    # и клиенты за VPN зависали бы на большом ServerHello).
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      STAYA_DOMAIN: ${STAYA_DOMAIN:-2-27-42-60.sslip.io}
+      # По умолчанию тестовый CA Let's Encrypt; боевой — в .env на сервере.
+      ACME_CA: ${ACME_CA:-https://acme-staging-v02.api.letsencrypt.org/directory}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./www:/srv/www:ro
+      # Сертификаты и ключи переживают передеплой — иначе их выпускали бы заново.
+      - caddy_data:/data
+      - caddy_config:/config
+
+  probe:
+    image: ghcr.io/realfamousbae/staya-probe:${PROBE_TAG:-main}
+    restart: unless-stopped
+    # PROBE_TOKEN — только здесь, файл создаётся на сервере (права 600), не в git.
+    env_file: ./probe.env
+    # Только loopback: Docker обходит ufw для опубликованных портов,
+    # поэтому наружу смотрит только Caddy.
+    ports:
+      - "127.0.0.1:8081:8080"
+    volumes:
+      - ./probe-data:/data
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+volumes:
+  caddy_data: {}
+  caddy_config: {}

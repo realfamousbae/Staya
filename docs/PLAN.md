@@ -146,7 +146,7 @@ MVP — это минимум, при котором Staya уже можно п�
 
 Прототип не отправляет координаты вообще: только метрики (время, триггер, состояние приложения, точность в метрах, скорость по корзинам, заряд, режим энергосбережения, результат и задержка отправки).
 
-- [ ] 1.1 VPS + домен/deSEC, укрепление (SSH по ключу, отдельный пользователь, вход по паролю выключен, ufw, unattended-upgrades), Docker Compose + Caddy, `tools/probe-server`. Образы собирает GitHub Actions (ghcr.io), на VPS не компилируем: 1 vCPU / 2 ГБ
+- [x] 1.1 VPS: базовая настройка (`deploy/setup-server.sh`: `staya` по ключу, ufw, автообновления, `tcp_mtu_probing` для клиентов за VPN, Docker с ротацией логов), Caddy в сети хоста с Let's Encrypt для `2-27-42-60.sslip.io`, TLS 1.3, без access-логов; `tools/probe-server` (метрики без координат, строгая схема) — образ из CI (`images.yml`), деплой `deploy/deploy.sh`. Подробно — `docs/server.md`
 - [x] 1.1a Установка на iPhone без локального Xcode 27: CI (macOS-раннер, Xcode 26.6) собирает неподписанный `.ipa`, установка через AltStore/SideStore со своим Apple ID. Проверено 03.10.2026 на iPhone автора (iOS 27) через AltStore: ядро и Keychain (`AfterFirstUnlockThisDeviceOnly`) работают
 - [ ] 1.2 iOS `LocationEngine`, стратегии: S1 — SLC; S2 — SLC + визиты; S3 — непрерывные обновления (`distanceFilter` 100 м) + `CLBackgroundActivitySession`/`CLServiceSession`; S4 — адаптивная через `CMMotionActivity`
 - [ ] 1.3 Android `LocationEngine`: foreground service типа `location`, `LocationManager`, significant motion; инструкция по энергосбережению Xiaomi и Samsung; запуск после перезагрузки на Android 14–16
@@ -210,6 +210,7 @@ MVP — это минимум, при котором Staya уже можно п�
 - Перезапуск iOS-приложения после принудительного закрытия при SLC и `CLServiceSession` (1.4)
 - Запуск location foreground service после перезагрузки на Android 14–16 (1.3)
 - Переиспользование ключа Caddy для SPKI pinning (3.8)
+- Подключение по IP с именем `2-27-42-60.sslip.io` только для TLS: на Android — свой `Dns` в OkHttp; на iOS `URLSession` не умеет подменять DNS и не шлёт SNI для IP — нужны `default_sni` в Caddy и своя проверка доверия в делегате или Network.framework (4.1). Смена IP в панели меняет и имя — новая сборка приложения
 
 ## Принятые решения
 
@@ -221,7 +222,8 @@ MVP — это минимум, при котором Staya уже можно п�
 | Apple Developer Program | Пока нет: iOS через Personal Team (переподпись раз в 7 дней), без APNs, TestFlight и universal links |
 | Mac и Xcode | Остаёмся на macOS Sequoia 15.7.9 и Xcode 26.3 (обновление не планируется). Разработка — в симуляторе; на iPhone с iOS 27 — `.ipa` из CI с Xcode 27 через AltStore/SideStore; iPhone друга с iOS 18 — напрямую из Xcode 26.3 |
 | Пуши | В MVP нет ни на одной платформе |
-| Хостинг | VPS Play2Go LC-1 (Финляндия): KVM, 1 vCPU, 2 ГБ RAM, 40 ГБ, IPv4, Ubuntu 24.04. Доступ только по SSH-ключу; пароли в чат не передаются |
+| Хостинг | VPS Play2Go LC-1 (Финляндия): KVM, 1 vCPU, 2 ГБ RAM, 40 ГБ, IPv4, Ubuntu 24.04. Администрирование — пользователь `staya` по SSH-ключу; root и вход по паролю не трогаем. Подробно — `docs/server.md` |
+| Домен | `2-27-42-60.sslip.io`, в том числе для беты (свой домен не покупаем; deSEC закрыл регистрацию в `dedyn.io`). Приложения подключаются по IP, имя — только для TLS |
 | Карта | Только город/область |
 | История перемещений | Нет, даже локально |
 | Потеря телефона | В MVP — заново добавить друзей; резервная копия — «Позже» |

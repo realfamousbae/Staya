@@ -1,0 +1,34 @@
+# Caddy на VPS (docs/server.md). Access-логов нет: директивы `log` здесь не должно
+# быть — IP клиентов не пишем. ACME email не указываем: репозиторий публичный.
+{
+	acme_ca {$ACME_CA}
+	servers {
+		# Только TCP: туннели плохо переносят QUIC, а ufw открывает лишь 443/tcp.
+		protocols h1 h2
+	}
+}
+
+{$STAYA_DOMAIN} {
+	tls {
+		protocols tls1.3
+	}
+
+	handle /health {
+		respond "ok"
+	}
+
+	# Ответ в 64 КБ: проверка, что большие ответы доходят через VPN (MTU).
+	handle /mtu-test {
+		root * /srv/www
+		rewrite * /mtu-64k.bin
+		file_server
+	}
+
+	handle /probe {
+		reverse_proxy 127.0.0.1:8081
+	}
+
+	handle {
+		respond 404
+	}
+}

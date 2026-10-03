@@ -1,0 +1,7 @@
+target
+**/target
+.git
+android
+ios
+docs
+deploy
