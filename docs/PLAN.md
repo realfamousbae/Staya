@@ -147,7 +147,7 @@ MVP — это минимум, при котором Staya уже можно п�
 Прототип не отправляет координаты вообще: только метрики (время, триггер, состояние приложения, точность в метрах, скорость по корзинам, заряд, режим энергосбережения, результат и задержка отправки).
 
 - [ ] 1.1 VPS + домен/deSEC, укрепление (SSH по ключу, отдельный пользователь, вход по паролю выключен, ufw, unattended-upgrades), Docker Compose + Caddy, `tools/probe-server`. Образы собирает GitHub Actions (ghcr.io), на VPS не компилируем: 1 vCPU / 2 ГБ
-- [ ] 1.1a Установка на iPhone без локального Xcode 27: CI (macOS-раннер) собирает неподписанный `.ipa`, установка через AltStore/SideStore со своим Apple ID; проверить на iPhone автора (iOS 27) до начала 1.2
+- [x] 1.1a Установка на iPhone без локального Xcode 27: CI (macOS-раннер, Xcode 26.6) собирает неподписанный `.ipa`, установка через AltStore/SideStore со своим Apple ID. Проверено 03.10.2026 на iPhone автора (iOS 27) через AltStore: ядро и Keychain (`AfterFirstUnlockThisDeviceOnly`) работают
 - [ ] 1.2 iOS `LocationEngine`, стратегии: S1 — SLC; S2 — SLC + визиты; S3 — непрерывные обновления (`distanceFilter` 100 м) + `CLBackgroundActivitySession`/`CLServiceSession`; S4 — адаптивная через `CMMotionActivity`
 - [ ] 1.3 Android `LocationEngine`: foreground service типа `location`, `LocationManager`, significant motion; инструкция по энергосбережению Xiaomi и Samsung; запуск после перезагрузки на Android 14–16
 - [ ] 1.4 Сутки замеров: iPhone 13 Pro Max, Samsung S23 Ultra, Poco. Сценарии: покой, город, транспорт, принудительное закрытие, перезагрузка; доступность VPS у операторов
@@ -205,7 +205,7 @@ MVP — это минимум, при котором Staya уже можно п�
 
 ### Проверить по ходу
 
-- Установка на iPhone через AltStore/SideStore: работает ли фоновая геолокация и Keychain при переподписи своим Apple ID (1.1a)
+- Фоновая геолокация в сборке, переподписанной AltStore своим Apple ID (Keychain уже проверен в 1.1a) — проверить в 1.2
 - Старый Poco: если окажется 32-битным (armeabi-v7a), добавить таргет в `scripts/build-android-core.sh` и `abiFilters`
 - Перезапуск iOS-приложения после принудительного закрытия при SLC и `CLServiceSession` (1.4)
 - Запуск location foreground service после перезагрузки на Android 14–16 (1.3)
