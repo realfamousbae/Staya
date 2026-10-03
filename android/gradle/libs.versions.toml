@@ -5,6 +5,7 @@ composeBom = "2026.09.00"
 activityCompose = "1.13.0"
 jna = "5.19.1"
 junit = "4.13.2"
+androidxAnnotation = "1.11.0"
 
 [libraries]
 androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
@@ -16,6 +17,7 @@ androidx-activity-compose = { group = "androidx.activity", name = "activity-comp
 
 jna = { group = "net.java.dev.jna", name = "jna", version.ref = "jna" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
+androidx-annotation = { group = "androidx.annotation", name = "annotation", version.ref = "androidxAnnotation" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

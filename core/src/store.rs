@@ -50,6 +50,9 @@ impl Store {
     fn init(conn: Connection, key: &DbKey) -> Result<Self, CoreError> {
         // Удалённые страницы затираются нулями, журнал не остаётся на диске.
         conn.execute_batch("PRAGMA secure_delete = ON; PRAGMA journal_mode = DELETE;")?;
+        // Базу держит только один процесс: эксклюзивная блокировка берётся
+        // сразу и не отпускается до закрытия (второй процесс получит ошибку).
+        conn.execute_batch("PRAGMA locking_mode = EXCLUSIVE; BEGIN EXCLUSIVE; COMMIT;")?;
         let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
         match version {
             0 => {
@@ -123,8 +126,11 @@ impl Store {
     }
 
     /// Выполняет несколько записей атомарно: либо все, либо ни одной.
-    /// Вложенные вызовы не поддерживаются.
+    /// Вложенный вызов выполняется внутри внешней транзакции.
     pub fn atomically<T>(&self, f: impl FnOnce() -> Result<T, CoreError>) -> Result<T, CoreError> {
+        if !self.conn.is_autocommit() {
+            return f();
+        }
         let tx = self.conn.unchecked_transaction()?;
         let value = f()?;
         tx.commit()?;
@@ -198,6 +204,18 @@ mod tests {
         assert!(s.get_secret("b").unwrap().is_none());
         s.atomically(|| s.put_secret("b", b"committed")).unwrap();
         assert_eq!(s.get_secret("b").unwrap().unwrap().as_slice(), b"committed");
+    }
+
+    #[test]
+    fn nested_atomically_joins_the_outer_transaction() {
+        let s = Store::open_in_memory(&key(1)).unwrap();
+        let r: Result<(), CoreError> = s.atomically(|| {
+            s.atomically(|| s.put_secret("inner", b"x"))?;
+            Err(CoreError::Corrupted)
+        });
+        assert!(r.is_err());
+        // Внешняя транзакция откатилась вместе с вложенной записью.
+        assert!(s.get_secret("inner").unwrap().is_none());
     }
 
     #[test]

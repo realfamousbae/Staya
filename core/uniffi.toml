@@ -1,0 +1,5 @@
+# Настройки генерации привязок UniFFI.
+[bindings.kotlin]
+# Код под Android: на API < 34 вместо java.lang.ref.Cleaner (нет до Android 13)
+# используется JNA-реализация — нам нужен minSdk 29.
+android = true

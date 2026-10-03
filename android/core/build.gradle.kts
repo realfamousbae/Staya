@@ -15,6 +15,8 @@ val buildRustCore by tasks.registering(Exec::class) {
     inputs.dir(rootProject.layout.projectDirectory.dir("../core/src"))
     inputs.dir(rootProject.layout.projectDirectory.dir("../proto/src"))
     inputs.file(rootProject.layout.projectDirectory.file("../Cargo.lock"))
+    inputs.file(rootProject.layout.projectDirectory.file("../core/uniffi.toml"))
+    inputs.file(script)
     inputs.property("profile", rustProfile)
     outputs.dir(rustOut)
 }
@@ -31,6 +33,11 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_21
         targetCompatibility = JavaVersion.VERSION_21
+    }
+
+    testOptions {
+        // В JVM-тестах android.os.Build — заглушка: SDK_INT = 0, привязки берут JNA-очистку.
+        unitTests.isReturnDefaultValues = true
     }
 
     sourceSets {
@@ -60,6 +67,8 @@ tasks.withType<Test>().configureEach {
 dependencies {
     // Нужна Kotlin-привязкам UniFFI для вызова нативной библиотеки.
     implementation(libs.jna) { artifact { type = "aar" } }
+    // @RequiresApi в привязках UniFFI для Android (core/uniffi.toml).
+    implementation(libs.androidx.annotation)
 
     // Обычный jar JNA содержит нативный диспетчер для macOS/Linux — нужен для JVM-тестов.
     testImplementation(libs.jna)

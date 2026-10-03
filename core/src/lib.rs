@@ -1,6 +1,7 @@
 //! Staya core: identity keys, Olm/Megolm sessions, location packets and local storage.
 
 pub mod account;
+pub mod api;
 pub mod friends;
 #[cfg(any(test, feature = "fuzzing"))]
 pub mod fuzzing;
@@ -9,8 +10,10 @@ pub mod store;
 
 uniffi::setup_scaffolding!();
 
-/// Ошибки ядра. Сообщения не содержат секретов и координат.
-#[derive(Debug, thiserror::Error)]
+/// Ошибки ядра. Сообщения не содержат секретов и координат; в Swift/Kotlin
+/// приходят как исключение с текстом (`flat_error`).
+#[derive(Debug, thiserror::Error, uniffi::Error)]
+#[uniffi(flat_error)]
 pub enum CoreError {
     #[error("storage error: {0}")]
     Storage(#[from] rusqlite::Error),
@@ -28,6 +31,10 @@ pub enum CoreError {
     AccountExists,
     #[error("a location is required unless ghost mode or freeze is on")]
     MissingLocation,
+    #[error("invalid input: {0}")]
+    Invalid(&'static str),
+    #[error("the core panicked earlier; open it again")]
+    Poisoned,
     #[error("unknown friend")]
     UnknownFriend,
     #[error("invalid invite: {0}")]

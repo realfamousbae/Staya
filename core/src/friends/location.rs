@@ -24,7 +24,7 @@ pub(super) const HELD_RECORD: &str = "held_locations";
 const INBOUND_SESSIONS_PER_FRIEND: usize = 3;
 
 /// Замер позиции с устройства. Координаты — градусы × 10⁷.
-#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, uniffi::Record)]
 pub struct Location {
     pub lat_e7: i32,
     pub lon_e7: i32,
@@ -43,7 +43,7 @@ impl fmt::Debug for Location {
 }
 
 /// Глобальные режимы: призрак и заморозка (§7.3–7.4).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, uniffi::Record)]
 pub struct Sharing {
     pub ghost: bool,
     /// Зафиксированная позиция; `None` — заморозка выключена.

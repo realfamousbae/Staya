@@ -120,7 +120,7 @@ struct Friend {
 }
 
 /// Точность, с которой другу видна наша позиция (§7.3).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, uniffi::Enum)]
 pub enum Precision {
     #[default]
     Exact,
@@ -468,6 +468,19 @@ impl Friends {
     /// повторялись вечно и не задерживали остальные.
     pub fn mark_rejected(&mut self, store: &Store, ids: &[u64]) -> Result<(), CoreError> {
         self.outbox.mark_sent(ids);
+        self.save(store)
+    }
+
+    /// Итог одной отправки (§8.2): принятые и окончательно отклонённые списываются
+    /// одной записью.
+    pub fn complete_send(
+        &mut self,
+        store: &Store,
+        sent: &[u64],
+        rejected: &[u64],
+    ) -> Result<(), CoreError> {
+        self.outbox.mark_sent(sent);
+        self.outbox.mark_sent(rejected);
         self.save(store)
     }
 
