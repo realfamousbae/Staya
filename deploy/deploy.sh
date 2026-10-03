@@ -24,4 +24,10 @@ done
 "${SSH[@]}" "$HOST" "sudo bash -s" < "$DIR/setup-server.sh"
 rsync -az -e "${SSH[*]}" "$DIR/docker-compose.yml" "$DIR/Caddyfile" "$HOST:$APP_DIR/"
 
-"${SSH[@]}" "$HOST" "cd $APP_DIR && docker compose pull --quiet $* && docker compose up -d --remove-orphans $* && docker compose ps"
+# Исходящие соединения с VPS к реестрам иногда сбоят — повторяем скачивание.
+for i in 1 2 3 4; do
+  "${SSH[@]}" "$HOST" "cd $APP_DIR && docker compose pull --quiet $*" && break
+  [ "$i" = 4 ] && { echo "image pull failed" >&2; exit 1; }
+  sleep 10
+done
+"${SSH[@]}" "$HOST" "cd $APP_DIR && docker compose up -d --remove-orphans $* && docker compose ps"
