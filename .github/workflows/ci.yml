@@ -61,6 +61,8 @@ jobs:
           swiftc -I ios/StayaCore/Generated/headers ios/StayaCore/Sources/StayaCore/staya_core.swift \
             "$RUNNER_TEMP/main.swift" -L target/debug -lstaya_core -o "$RUNNER_TEMP/swifttest"
           "$RUNNER_TEMP/swifttest"
+      - name: iOS probe tests (queue, contract with probe-server)
+        run: scripts/test-ios-probe.sh
       - name: Build app (simulator)
         run: |
           xcodebuild -project ios/Staya.xcodeproj -scheme Staya \

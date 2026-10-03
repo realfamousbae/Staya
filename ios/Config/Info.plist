@@ -8,6 +8,8 @@
 	</array>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Staya показывает твою позицию на карте и отправляет её выбранным друзьям в зашифрованном виде.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>Staya реже включает геолокацию, когда ты не двигаешься, — так меньше расход батареи.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>Staya отправляет позицию друзьям в фоне, в зашифрованном виде. Сервер не видит координат.</string>
 </dict>

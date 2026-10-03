@@ -148,9 +148,9 @@ MVP — это минимум, при котором Staya уже можно п�
 
 - [x] 1.1 VPS: базовая настройка (`deploy/setup-server.sh`: `staya` по ключу, ufw, автообновления, `tcp_mtu_probing` для клиентов за VPN, Docker с ротацией логов), Caddy в сети хоста с Let's Encrypt для `2-27-42-60.sslip.io`, TLS 1.3, без access-логов; `tools/probe-server` (метрики без координат, строгая схема) — образ из CI (`images.yml`), деплой `deploy/deploy.sh`. Подробно — `docs/server.md`
 - [x] 1.1a Установка на iPhone без локального Xcode 27: CI (macOS-раннер, Xcode 26.6) собирает неподписанный `.ipa`, установка через AltStore/SideStore со своим Apple ID. Проверено 03.10.2026 на iPhone автора (iOS 27) через AltStore: ядро и Keychain (`AfterFirstUnlockThisDeviceOnly`) работают
-- [ ] 1.2 iOS `LocationEngine`, стратегии: S1 — SLC; S2 — SLC + визиты; S3 — непрерывные обновления (`distanceFilter` 100 м) + `CLBackgroundActivitySession`/`CLServiceSession`; S4 — адаптивная через `CMMotionActivity`
+- [x] 1.2 iOS `LocationEngine` (`ios/Staya/Probe`, флаг `STAYA_PROBE`): S1 — SLC; S2 — SLC + визиты; S3 — SLC + непрерывные (`distanceFilter` 100 м); S4 — SLC + визиты, непрерывные при движении по `CMMotionActivity` (запрос активности на каждом пробуждении, переключения пишутся как `continuous_start`/`continuous_stop`). Движок создаётся в `AppDelegate` (фоновый перезапуск без сцены); отправки не чаще раза в 45 с с числом событий; очередь неотправленного на диске без координат; отладочный экран с токеном в Keychain и тестовой отправкой. Контракт Swift ↔ сервер проверен локально (все значения перечислений → 204)
 - [ ] 1.3 Android `LocationEngine`: foreground service типа `location`, `LocationManager`, significant motion; инструкция по энергосбережению Xiaomi и Samsung; запуск после перезагрузки на Android 14–16
-- [ ] 1.4 Сутки замеров: iPhone 13 Pro Max, Samsung S23 Ultra, Poco. Сценарии: покой, город, транспорт, принудительное закрытие, перезагрузка; доступность VPS у операторов
+- [ ] 1.4 Сутки замеров (протокол — `docs/measurements/stage1.md`): iPhone 13 Pro Max, Samsung S23 Ultra, Poco. Сценарии: покой, город, транспорт, принудительное закрытие, перезагрузка; доступность VPS у операторов
 - [ ] 1.5 Отчёт `docs/measurements/stage1.md` (включая объём записи на диск за одно фоновое пробуждение: сейчас каждое обновление переписывает записи всех друзей и исходящую очередь целиком в JSON — если это заметно по батарее, разбить записи по друзьям и хранить байты как BLOB до 4.5): стратегия, частоты по умолчанию, порог расхода батареи (ориентир ≤3–5 %/сутки в покое)
 
 Готово, когда: выбраны стратегия частоты и порог расхода батареи.
@@ -189,7 +189,7 @@ MVP — это минимум, при котором Staya уже можно п�
 - [ ] 4.2 Онбординг, ключи, ник, аватар
 - [ ] 4.3 Добавление друга: QR, ссылка `staya://` + https-фолбэк, код безопасности
 - [ ] 4.4 Карта MapLibre и список друзей
-- [ ] 4.5 Интеграция `LocationEngine` → ядро → сервер → карта
+- [ ] 4.5 Интеграция `LocationEngine` → ядро → сервер → карта; до неё убрать код замеров (`STAYA_PROBE`, `ios/Staya/Probe/ProbeClient.swift`, отправку метрик)
 - [ ] 4.6 Режим призрака, заморозка, точность по друзьям, удаление друга
 - [ ] 4.7 Проход по безопасности: `/security-review`, отсутствие координат в логах, проверка трафика через mitmproxy
 - [ ] 4.8 Бета: Android — подписанный APK в GitHub Releases + Obtainium; iOS — автор через Xcode (Personal Team), друзья с iPhone — TestFlight после покупки Apple Developer или SideStore/AltStore
