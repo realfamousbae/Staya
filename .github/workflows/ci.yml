@@ -97,3 +97,5 @@ jobs:
       - name: Build, lint, unit tests
         working-directory: android
         run: ./gradlew --no-daemon assembleDebug lintDebug testDebugUnitTest
+      - name: Android probe contract with probe-server
+        run: scripts/test-android-probe.sh
