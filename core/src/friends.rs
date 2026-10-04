@@ -9,6 +9,7 @@ use staya_proto::consts::{INVITE_TTL_LINK, INVITE_TTL_QR, OLM_SESSIONS_PER_FRIEN
 use staya_proto::control::{ControlMessage, Profile, SessionKeyBytes};
 use staya_proto::envelope::{ControlEnvelope, OlmType};
 use staya_proto::invite::{Invite, InviteMethod, ServerRef};
+use staya_proto::location::LocationPayload;
 use staya_proto::signing;
 use vodozemac::megolm::{
     GroupSession, GroupSessionPickle, InboundGroupSession, InboundGroupSessionPickle,
@@ -117,6 +118,8 @@ struct Friend {
     inbound_megolm: Vec<InboundGroupSession>,
     /// Какую точность мы показываем этому другу.
     precision: Precision,
+    /// Последний принятый пакет позиции друга (для карты после перезапуска, §7.5).
+    last_location: Option<LocationPayload>,
 }
 
 /// Точность, с которой другу видна наша позиция (§7.3).
@@ -141,6 +144,9 @@ struct FriendRecord {
     inbound_megolm: Vec<InboundGroupSessionPickle>,
     #[serde(default)]
     precision: Precision,
+    /// Закодированный `LocationPayload` (§7.2).
+    #[serde(default)]
+    last_location: Option<Vec<u8>>,
 }
 
 impl Friend {
@@ -166,6 +172,10 @@ impl Friend {
                 .map(InboundGroupSession::pickle)
                 .collect(),
             precision: self.precision,
+            last_location: self
+                .last_location
+                .and_then(|p| p.encode().ok())
+                .map(|b| b.to_vec()),
         }
     }
 
@@ -194,6 +204,9 @@ impl Friend {
                 .map(InboundGroupSession::from_pickle)
                 .collect(),
             precision: r.precision,
+            last_location: r
+                .last_location
+                .and_then(|b| LocationPayload::decode(&b).ok()),
         }
     }
 }
@@ -228,6 +241,7 @@ pub struct FriendInfo {
     pub verified: bool,
     pub nick: Option<String>,
     pub avatar: Option<Vec<u8>>,
+    pub location: Option<LocationPayload>,
 }
 
 /// Список друзей и приглашений поверх аккаунта и хранилища.
@@ -290,6 +304,7 @@ impl Friends {
                 verified: f.verified,
                 nick: f.profile.as_ref().map(|p| p.nick.clone()),
                 avatar: f.profile.as_ref().map(|p| p.avatar.clone()),
+                location: f.last_location,
             })
             .collect()
     }
@@ -428,6 +443,7 @@ impl Friends {
             outbound_megolm: Some((megolm, now)),
             inbound_megolm: vec![],
             precision: Precision::default(),
+            last_location: None,
         };
         let out = encrypt_control(&mut record, invite.account_id, &request)?;
         // Прошлая неподтверждённая попытка больше не нужна.
@@ -790,6 +806,7 @@ impl Friends {
             outbound_megolm: Some((outbound, now)),
             inbound_megolm: vec![inbound],
             precision: Precision::default(),
+            last_location: None,
         };
         self.outbox
             .push(encrypt_control(&mut record, account_id, &accept)?);

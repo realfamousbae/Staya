@@ -283,6 +283,10 @@ fn accept_payload(friend: &mut Friend, id: AccountId, pos: usize, plaintext: &[u
     // Вместе с advance_to(index + 1) это гарантирует, что ничего старше последнего
     // принятого пакета уже не расшифруется; `timestamp` — только для показа.
     friend.inbound_megolm.drain(..pos);
+    // Последняя позиция хранится в зашифрованной базе: карта после перезапуска не
+    // пустая, а уже виденные пакеты повторно не расшифруются. `Hidden` заменяет
+    // прежнюю точку — скрытая позиция не должна оставаться на карте.
+    friend.last_location = Some(payload);
     Event::LocationUpdated {
         friend: id,
         payload,

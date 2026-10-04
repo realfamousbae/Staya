@@ -111,6 +111,8 @@ pub struct FriendView {
     pub nick: Option<String>,
     pub avatar: Option<Vec<u8>>,
     pub precision: Precision,
+    /// Последняя принятая позиция друга; у `Hidden` координат нет.
+    pub location: Option<FriendLocation>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
@@ -494,6 +496,7 @@ impl StayaCore {
                 nick: f.nick,
                 avatar: f.avatar,
                 precision: g.friends.precision(&f.account_id).unwrap_or_default(),
+                location: f.location.map(FriendLocation::from),
             })
             .collect())
     }

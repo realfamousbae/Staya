@@ -127,6 +127,15 @@ impl App {
         }
     }
 
+    /// Перезапуск приложения: база закрывается и открывается тем же ключом.
+    fn reopen(self) -> Self {
+        let Self { _dir, core, id } = self;
+        drop(core);
+        let path = _dir.path().join("staya.db").to_string_lossy().into_owned();
+        let core = StayaCore::open(path, vec![42; 32]).unwrap();
+        Self { _dir, core, id }
+    }
+
     /// Как сделает платформа: удаления слотов, затем один POST и `complete_send`.
     fn flush(&self, server: &mut JsonServer) {
         let batch = self.core.pending_sends().unwrap();
@@ -239,6 +248,62 @@ fn full_flow_through_the_api() {
                 friend: bob.id.clone()
             })
     );
+    assert!(alice.core.list_friends().unwrap().is_empty());
+}
+
+#[test]
+fn last_location_survives_restart_and_hidden_replaces_it() {
+    let mut server = JsonServer::default();
+    let (alice, bob) = (App::new(), App::new());
+    befriend(&alice, &bob, &mut server);
+    assert_eq!(alice.core.list_friends().unwrap()[0].location, None);
+
+    bob.core
+        .prepare_location_update(Some(HOME), T0 + 10)
+        .unwrap();
+    bob.flush(&mut server);
+    alice.sync(&mut server, T0 + 11);
+
+    // После перезапуска пакет из ящика уже не расшифруется, а точка на карте остаётся.
+    let alice = alice.reopen();
+    let events = alice.sync(&mut server, T0 + 12);
+    assert!(
+        !events
+            .iter()
+            .any(|e| matches!(e, CoreEvent::LocationUpdated { .. })),
+        "{events:?}"
+    );
+    let location = alice.core.list_friends().unwrap()[0]
+        .location
+        .expect("stored location");
+    assert_eq!(
+        (
+            location.kind,
+            location.lat_e7,
+            location.lon_e7,
+            location.timestamp
+        ),
+        (LocationKind::Exact, HOME.lat_e7, HOME.lon_e7, T0)
+    );
+
+    // Призрак: прежняя точка не должна оставаться на карте.
+    bob.core.set_ghost(true).unwrap();
+    bob.core
+        .prepare_location_update(Some(HOME), T0 + 20)
+        .unwrap();
+    bob.flush(&mut server);
+    alice.sync(&mut server, T0 + 21);
+    let alice = alice.reopen();
+    let location = alice.core.list_friends().unwrap()[0]
+        .location
+        .expect("hidden marker");
+    assert_eq!(
+        (location.kind, location.lat_e7, location.lon_e7),
+        (LocationKind::Hidden, 0, 0)
+    );
+
+    // Удаление друга стирает и его позицию.
+    alice.core.remove_friend(bob.id.clone(), false).unwrap();
     assert!(alice.core.list_friends().unwrap().is_empty());
 }
 
