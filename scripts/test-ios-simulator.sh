@@ -37,8 +37,8 @@ APP="$DERIVED/Build/Products/Debug-iphonesimulator/Staya.app"
 BUNDLE="$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$APP/Info.plist")"
 xcrun simctl install "$UDID" "$APP"
 OUT="$(xcrun simctl launch --console-pty --terminate-running-process "$UDID" "$BUNDLE" -staya-selftest 2>&1 || true)"
-echo "$OUT" | grep SELFTEST || true
-echo "$OUT" | grep -q "SELFTEST OK"
+echo "$OUT" | grep -q "SELFTEST OK" || { echo "self-test failed, app output:"; echo "$OUT"; exit 1; }
+echo "SELFTEST OK"
 
 # Обмен с dev-peer. Симулятор делит сеть с хостом: 127.0.0.1 — это Mac.
 cargo build -q -p staya-server --features dev --bin staya-dev-server
@@ -53,8 +53,8 @@ target/debug/dev-peer --server http://127.0.0.1:8787 --role invite \
 PEER_PID=$!
 OUT="$(xcrun simctl launch --console-pty --terminate-running-process "$UDID" "$BUNDLE" \
   -staya-devexchange http://127.0.0.1:8787 2>&1 || true)"
-echo "$OUT" | grep DEVEXCHANGE || true
-echo "$OUT" | grep -q "DEVEXCHANGE OK"
+echo "$OUT" | grep -q "DEVEXCHANGE OK" || { echo "dev exchange failed, app output:"; echo "$OUT"; exit 1; }
+echo "DEVEXCHANGE OK"
 wait "$PEER_PID"
 grep -q "PEER GOT LOCATION" "$LOGS/dev-peer.log"
 echo "dev exchange: both sides got the other's location"
