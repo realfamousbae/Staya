@@ -44,7 +44,7 @@ object LocationShare {
         Net.worker.execute {
             // Первый замер после включения уходит сразу, а не через минуту «скрыто».
             sender.reset()
-            runCatching { core.setGhost(false) }
+            runCatching { core.setGhost(false) }.onSuccess { resend(core) }
         }
         startService(app, fromBackground = false)
     }
@@ -61,6 +61,26 @@ object LocationShare {
                 Net.bind(core)?.second?.flush()
             }
         }
+    }
+
+    /** «Заморозить здесь»: друзья видят последнюю точку, пока заморозку не снимут. */
+    fun setFrozen(core: StayaCore, frozen: Boolean, onResult: (Boolean) -> Unit) {
+        Net.worker.execute {
+            val ok = runCatching { if (frozen) core.freezeHere() else core.setFrozen(null) }.isSuccess
+            if (ok) resend(core)
+            onResult(ok)
+        }
+    }
+
+    fun isFrozen(core: StayaCore): Boolean = runCatching { core.sharing().frozen != null }.getOrDefault(false)
+
+    /**
+     * Пакеты всем друзьям из последнего замера (смена режима или точности, 4.6).
+     * Замера ещё не было — отправлять нечего, это не ошибка. Только из [Net.worker].
+     */
+    fun resend(core: StayaCore) {
+        val queued = runCatching { core.prepareLocationUpdate(null, System.currentTimeMillis() / 1000) }
+        if (queued.isSuccess) runCatching { Net.bind(core)?.second?.flush() }
     }
 
     /**

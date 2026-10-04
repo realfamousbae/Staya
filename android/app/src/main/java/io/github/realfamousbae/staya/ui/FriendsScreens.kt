@@ -24,6 +24,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.BottomSheetScaffold
 import androidx.compose.material3.Button
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -52,6 +54,7 @@ import io.github.realfamousbae.staya.map.locationStatus
 import uniffi.staya_core.FriendView
 import uniffi.staya_core.InviteMethod
 import uniffi.staya_core.LocationKind
+import uniffi.staya_core.Precision
 import uniffi.staya_core.StayaCore
 
 /** Главный экран: карта друзей (4.4), под ней список и добавление (4.3). */
@@ -63,7 +66,7 @@ fun FriendsScreen(core: StayaCore, nick: String, server: String) {
         is FriendsModel.Screen.ShareLink -> ShareLink(s.uri)
         FriendsModel.Screen.Scan -> Scan()
         is FriendsModel.Screen.Confirm -> Confirm(s)
-        is FriendsModel.Screen.Safety -> Safety(s.friend, s.code)
+        is FriendsModel.Screen.Friend -> FriendCard(s.friend, s.code)
     }
 }
 
@@ -157,7 +160,7 @@ private fun FriendRow(f: FriendView, now: Long, onShow: () -> Unit) {
                 Text("не проверен — сверьте код безопасности", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
         }
-        if (f.active) TextButton(onClick = { FriendsModel.showSafety(f) }) { Text("Код") }
+        TextButton(onClick = { FriendsModel.showFriend(f) }) { Text("Ещё") }
     }
 }
 
@@ -253,10 +256,36 @@ private fun Confirm(s: FriendsModel.Screen.Confirm) {
 }
 
 @Composable
-private fun Safety(friend: FriendView, code: String) {
-    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+private fun FriendCard(initial: FriendView, code: String) {
+    // Свежая версия из списка: точность и статус меняются, пока карточка открыта.
+    val friend = FriendsModel.friends.firstOrNull { it.accountId == initial.accountId } ?: initial
+    var confirmRemove by remember { mutableStateOf(false) }
+    Column(
+        modifier = Modifier.verticalScroll(rememberScrollState()).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
         Back()
         Text(friend.nick ?: "Друг", style = MaterialTheme.typography.titleLarge)
+        Message()
+
+        if (friend.active) {
+            Text("Что видит этот друг", style = MaterialTheme.typography.titleMedium)
+            listOf(
+                Precision.EXACT to "Точную позицию",
+                Precision.APPROX to "Примерно (район ~1 км)",
+                Precision.HIDDEN to "Ничего — «скрыл(а) позицию»",
+            ).forEach { (p, title) ->
+                Row(
+                    modifier = Modifier.fillMaxWidth().clickable { FriendsModel.setPrecision(friend, p) },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RadioButton(selected = friend.precision == p, onClick = { FriendsModel.setPrecision(friend, p) })
+                    Text(title)
+                }
+            }
+            HorizontalDivider()
+        }
+
         Text("Код безопасности", style = MaterialTheme.typography.titleMedium)
         Text(code, style = MaterialTheme.typography.headlineSmall)
         Text(
@@ -265,8 +294,27 @@ private fun Safety(friend: FriendView, code: String) {
         )
         if (friend.verified) {
             Text("Уже проверен.", color = MaterialTheme.colorScheme.primary)
-        } else {
+        } else if (friend.active) {
             Button(onClick = { FriendsModel.markVerified(friend) }) { Text("Совпадает") }
         }
+
+        HorizontalDivider()
+        OutlinedButton(onClick = { confirmRemove = true }) {
+            Text("Удалить друга", color = MaterialTheme.colorScheme.error)
+        }
+    }
+    if (confirmRemove) {
+        AlertDialog(
+            onDismissRequest = { confirmRemove = false },
+            title = { Text("Удалить ${friend.nick ?: "друга"}?") },
+            text = { Text("Он сразу перестанет видеть твою позицию, а ты — его. Чтобы снова дружить, придётся добавить друг друга заново.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmRemove = false
+                    FriendsModel.remove(friend)
+                }) { Text("Удалить", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { confirmRemove = false }) { Text("Отмена") } },
+        )
     }
 }

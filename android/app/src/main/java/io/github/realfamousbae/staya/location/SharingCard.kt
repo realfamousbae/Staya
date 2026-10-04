@@ -80,6 +80,29 @@ fun SharingCard(core: StayaCore) {
             })
         }
         if (!enabled) return@Column
+        var frozen by remember { mutableStateOf(LocationShare.isFrozen(core)) }
+        var freezeError by remember { mutableStateOf(false) }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Заморозить позицию здесь")
+                Text(
+                    if (freezeError) {
+                        "Пока нет ни одного замера — подожди, пока позиция определится."
+                    } else if (frozen) {
+                        "Друзья видят эту точку, куда бы ты ни пошёл(а)"
+                    } else {
+                        "Друзья увидят последнюю точку, пока не снимешь"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Switch(checked = frozen, onCheckedChange = { on ->
+                LocationShare.setFrozen(core, on) { ok ->
+                    freezeError = on && !ok
+                    if (ok) frozen = on
+                }
+            })
+        }
         // Пересчитываются при каждом возвращении на экран (например, из настроек).
         val background = remember(resumes) { LocationShare.hasBackgroundPermission(context) }
         val notifications = remember(resumes) {

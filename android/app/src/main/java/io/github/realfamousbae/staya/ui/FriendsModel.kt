@@ -3,12 +3,15 @@ package io.github.realfamousbae.staya.ui
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import io.github.realfamousbae.staya.location.LocationShare
 import io.github.realfamousbae.staya.net.CoreSync
 import io.github.realfamousbae.staya.net.LiveConnection
 import io.github.realfamousbae.staya.net.Net
+import uniffi.staya_core.CoreEvent
 import uniffi.staya_core.FriendView
 import uniffi.staya_core.InviteInfo
 import uniffi.staya_core.InviteMethod
+import uniffi.staya_core.Precision
 import uniffi.staya_core.StayaCore
 
 /**
@@ -24,7 +27,8 @@ object FriendsModel {
         data class ShareLink(val uri: String) : Screen
         data object Scan : Screen
         data class Confirm(val uri: String, val info: InviteInfo) : Screen
-        data class Safety(val friend: FriendView, val code: String) : Screen
+        /** Карточка друга: точность, код безопасности, удаление (4.6). */
+        data class Friend(val friend: FriendView, val code: String) : Screen
     }
 
     private val worker = Net.worker
@@ -50,7 +54,7 @@ object FriendsModel {
                     return@execute
                 }
                 sync = s
-                live = LiveConnection(client, s, { reload() }, { message = AppModel.describeError(it) }, worker)
+                live = LiveConnection(client, s, { events -> onEvents(core, events) }, { message = AppModel.describeError(it) }, worker)
             }
             reload()
             // Пополнить одноразовые ключи (их разбирают при добавлении) и повернуть fallback.
@@ -61,6 +65,12 @@ object FriendsModel {
 
     fun stop() {
         worker.execute { live?.stop() }
+    }
+
+    /** События из ящика (в [worker]). Новому другу — сразу последний замер: иначе в покое он ждал бы часами. */
+    private fun onEvents(core: StayaCore, events: List<CoreEvent>) {
+        reload()
+        if (events.any { it is CoreEvent.FriendAdded }) LocationShare.resend(core)
     }
 
     private fun reload() {
@@ -120,11 +130,11 @@ object FriendsModel {
         }
     }
 
-    fun showSafety(friend: FriendView) {
+    fun showFriend(friend: FriendView) {
         val core = core ?: return
         worker.execute {
             runCatching { core.safetyCode(friend.accountId) }
-                .onSuccess { screen = Screen.Safety(friend, it) }
+                .onSuccess { screen = Screen.Friend(friend, it) }
                 .onFailure { message = AppModel.describeError(it as Exception) }
         }
     }
@@ -134,6 +144,30 @@ object FriendsModel {
         worker.execute {
             runCatching { core.markVerified(friend.accountId) }
                 .onFailure { message = AppModel.describeError(it as Exception) }
+            reload()
+            screen = Screen.Home
+        }
+    }
+
+    /** Точность для друга — сразу, из последнего замера (не ждём следующего). */
+    fun setPrecision(friend: FriendView, precision: Precision) {
+        val core = core ?: return
+        worker.execute {
+            runCatching { core.setPrecision(friend.accountId, precision) }
+                .onSuccess { LocationShare.resend(core) }
+                .onFailure { message = AppModel.describeError(it as Exception) }
+            reload()
+        }
+    }
+
+    /** Удаление: сессии уничтожаются, слот в его ящике удаляется, другу — уведомление. */
+    fun remove(friend: FriendView) {
+        val core = core ?: return
+        worker.execute {
+            runCatching {
+                core.removeFriend(friend.accountId, true)
+                runCatching { sync?.flush() }
+            }.onFailure { message = AppModel.describeError(it as Exception) }
             reload()
             screen = Screen.Home
         }
