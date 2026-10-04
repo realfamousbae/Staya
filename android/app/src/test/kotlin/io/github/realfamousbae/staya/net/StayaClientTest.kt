@@ -39,11 +39,26 @@ class StayaClientTest {
     private fun pin(cert: HeldCertificate): ByteArray =
         MessageDigest.getInstance("SHA-256").digest(cert.certificate.publicKey.encoded)
 
+    /**
+     * Сервер на заданном порту: подмена ключа «на том же адресе» поднимает новый
+     * сервер сразу после закрытия старого, а порт освобождается не мгновенно
+     * (в CI бывал `BindException`) — несколько попыток.
+     */
     private fun startServer(cert: HeldCertificate, port: Int = 0) {
-        server = MockWebServer()
-        server.useHttps(HandshakeCertificates.Builder().heldCertificate(cert).build().sslSocketFactory())
-        server.dispatcher = fake
-        server.start(java.net.InetAddress.getByName("127.0.0.1"), port)
+        var attempt = 0
+        while (true) {
+            server = MockWebServer()
+            server.useHttps(HandshakeCertificates.Builder().heldCertificate(cert).build().sslSocketFactory())
+            server.dispatcher = fake
+            try {
+                server.start(java.net.InetAddress.getByName("127.0.0.1"), port)
+                return
+            } catch (e: java.net.BindException) {
+                server.close()
+                if (++attempt >= 50) throw e
+                Thread.sleep(100)
+            }
+        }
     }
 
     @Before
