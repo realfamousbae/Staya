@@ -1,5 +1,8 @@
 //! Тестовый собеседник: ядро + HTTP к dev-серверу, как это делает платформа (§8.2).
 
+use std::io::Write;
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -16,7 +19,7 @@ pub fn now() -> i64 {
 }
 
 pub struct Peer {
-    _dir: tempfile::TempDir,
+    _dir: Option<tempfile::TempDir>,
     core: Arc<StayaCore>,
     base: String,
     pub id: String,
@@ -32,7 +35,40 @@ impl Peer {
         let mut key = vec![0u8; 32];
         getrandom::fill(&mut key).map_err(|e| e.to_string())?;
         let path = dir.path().join("staya.db").to_string_lossy().into_owned();
-        let core = StayaCore::open(path, key)?;
+        Self::with_core(base, Some(dir), StayaCore::open(path, key)?)
+    }
+
+    /// Аккаунт, переживающий перезапуск: база и ключ в `state` (тестовый друг на
+    /// настоящем сервере). Ключ тестового аккаунта — файлом с правами 600: это
+    /// инструмент разработки, не приложение.
+    pub fn open(base: &str, state: &Path) -> Result<Self, Error> {
+        std::fs::create_dir_all(state)?;
+        std::fs::set_permissions(state, std::fs::Permissions::from_mode(0o700))?;
+        let key_path = state.join("db-key");
+        let key = match std::fs::read(&key_path) {
+            Ok(key) => key,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                let mut key = vec![0u8; 32];
+                getrandom::fill(&mut key).map_err(|e| e.to_string())?;
+                std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .mode(0o600)
+                    .open(&key_path)?
+                    .write_all(&key)?;
+                key
+            }
+            Err(e) => return Err(e.into()),
+        };
+        let path = state.join("staya.db").to_string_lossy().into_owned();
+        Self::with_core(base, None, StayaCore::open(path, key)?)
+    }
+
+    fn with_core(
+        base: &str,
+        dir: Option<tempfile::TempDir>,
+        core: Arc<StayaCore>,
+    ) -> Result<Self, Error> {
         let id = core.identity()?.account_id;
         let agent = ureq::Agent::config_builder()
             .timeout_global(Some(Duration::from_secs(10)))
@@ -135,6 +171,39 @@ impl Peer {
     pub fn create_invite(&self, server: &str) -> Result<String, Error> {
         self.core.set_server(server.to_owned(), Vec::new())?;
         Ok(self.core.create_invite(InviteMethod::Qr, now())?)
+    }
+
+    /// Привязка к серверу по ссылке `staya://server?…` (с отпечатками ключа TLS).
+    pub fn bind_server_link(&self, link: &str) -> Result<(), Error> {
+        self.core.set_server_from_link(link.to_owned())?;
+        Ok(())
+    }
+
+    /// Ссылка-приглашение (24 часа) на уже привязанный сервер.
+    pub fn create_link_invite(&self) -> Result<String, Error> {
+        Ok(self.core.create_invite(InviteMethod::Link, now())?)
+    }
+
+    /// Друзья для журнала тестового друга: ник и последняя позиция без координат.
+    pub fn friend_summaries(&self) -> Result<Vec<String>, Error> {
+        Ok(self
+            .core
+            .list_friends()?
+            .into_iter()
+            .map(|f| {
+                let nick = f.nick.unwrap_or_else(|| "?".into());
+                match f.location {
+                    Some(l) => format!(
+                        "{nick}: {:?}, ±{} м, {} с назад",
+                        l.kind,
+                        l.accuracy_m,
+                        now() - l.timestamp
+                    ),
+                    None if f.active => format!("{nick}: позиции нет"),
+                    None => format!("{nick}: ждём ответа"),
+                }
+            })
+            .collect())
     }
 
     /// Кладёт приглашение на `/dev/invite` для собеседника.

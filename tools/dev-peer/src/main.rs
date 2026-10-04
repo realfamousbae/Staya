@@ -6,6 +6,13 @@
 //! SSH-туннель к его loopback-порту. Приглашение тогда передаётся через файл:
 //! `--invite-file PATH` (invite пишет, accept ждёт и читает). Код приглашения
 //! закрытого сервера — из `STAYA_INVITE_CODE` (не аргументом: не светится в `ps`).
+//!
+//! `--role friend` — долгоживущий тестовый друг на настоящем сервере (ручная
+//! проверка приложений): `--state DIR` (база и ключ переживают перезапуск),
+//! `--server-link staya://server?…` (имя и отпечатки ключа TLS), `--login DOMAIN`,
+//! `--nick`, `--mine LAT,LON`, `--invite-file PATH` (ссылка-приглашение пишется
+//! один раз). Раз в минуту шлёт свою позицию, в журнал — события и позиции друзей
+//! без координат.
 
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
@@ -17,6 +24,65 @@ fn pair(s: &str) -> Result<(i32, i32), Error> {
     Ok((a.trim().parse()?, b.trim().parse()?))
 }
 
+fn invite_code() -> Option<String> {
+    std::env::var("STAYA_INVITE_CODE")
+        .ok()
+        .filter(|c| !c.is_empty())
+}
+
+/// Тестовый друг: живёт, пока его не остановят.
+fn friend(arg: &dyn Fn(&str) -> Option<String>, server: &str) -> Result<(), Error> {
+    let state = arg("--state").ok_or("--state DIR")?;
+    let domain = arg("--login").ok_or("--login DOMAIN")?;
+    let mine = pair(&arg("--mine").ok_or("--mine LAT,LON")?)?;
+    let mut peer = Peer::open(server, std::path::Path::new(&state))?;
+    if let Some(link) = arg("--server-link") {
+        peer.bind_server_link(&link)?;
+    }
+    peer.login(&domain, invite_code())?;
+    if let Some(nick) = arg("--nick") {
+        peer.set_nick(&nick)?;
+    }
+    peer.publish_keys()?;
+    if let Some(path) = arg("--invite-file")
+        && !std::path::Path::new(&path).exists()
+        && !peer.has_friends()?
+    {
+        std::fs::write(&path, peer.create_link_invite()?)?;
+        eprintln!("FRIEND INVITE WRITTEN");
+    }
+    let mut last_share: Option<Instant> = None;
+    let mut last_keys = Instant::now();
+    loop {
+        match peer.sync() {
+            Ok(events) => {
+                if !events.is_empty() {
+                    for line in peer.friend_summaries()? {
+                        eprintln!("FRIEND {line}");
+                    }
+                }
+                if peer.has_friends()?
+                    && last_share.is_none_or(|t| t.elapsed() >= Duration::from_secs(60))
+                {
+                    peer.share(mine.0, mine.1)?;
+                    last_share = Some(Instant::now());
+                }
+                if last_keys.elapsed() >= Duration::from_secs(600) {
+                    peer.publish_keys()?;
+                    last_keys = Instant::now();
+                }
+            }
+            // Сессия истекла или сеть мигнула: войти заново и продолжить.
+            Err(e) => {
+                eprintln!("FRIEND sync error: {e}");
+                std::thread::sleep(Duration::from_secs(20));
+                let _ = peer.login(&domain, invite_code());
+            }
+        }
+        std::thread::sleep(Duration::from_secs(10));
+    }
+}
+
 fn run() -> Result<(), Error> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let arg = |name: &str| -> Option<String> {
@@ -25,7 +91,10 @@ fn run() -> Result<(), Error> {
             .and_then(|i| args.get(i + 1).cloned())
     };
     let server = arg("--server").unwrap_or_else(|| "http://127.0.0.1:8787".into());
-    let role = arg("--role").ok_or("--role invite|accept")?;
+    let role = arg("--role").ok_or("--role invite|accept|friend")?;
+    if role == "friend" {
+        return friend(&arg, &server);
+    }
     let secs = |name: &str, default: u64| -> Result<Duration, Error> {
         Ok(Duration::from_secs(
             arg(name).map_or(Ok(default), |s| s.parse())?,
@@ -42,12 +111,7 @@ fn run() -> Result<(), Error> {
     let login = arg("--login");
     let invite_file = arg("--invite-file");
     if let Some(domain) = &login {
-        peer.login(
-            domain,
-            std::env::var("STAYA_INVITE_CODE")
-                .ok()
-                .filter(|c| !c.is_empty()),
-        )?;
+        peer.login(domain, invite_code())?;
     }
     peer.publish_keys()?;
     match role.as_str() {

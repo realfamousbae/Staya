@@ -7,7 +7,7 @@
 - proto/ — staya-proto: форматы конвертов, API-типы (без криптографии)
 - core/ — staya-core: vodozemac (Olm + Megolm), протокол, хранилище, UniFFI; sans-IO — сеть на стороне платформ
 - server/ — staya-server: Rust (axum), PostgreSQL; правила ящиков — `mailbox.rs`, dev-сервер в памяти — фича `dev` (`cargo run -p staya-server --features dev --bin staya-dev-server`)
-- tools/dev-peer — тестовый собеседник на ядре для dev-сервера (CI: обмен с симулятором и эмулятором)
+- tools/dev-peer — тестовый собеседник на ядре для dev-сервера (CI: обмен с симулятором и эмулятором); `--role friend` — долгоживущий тестовый друг на настоящем сервере для ручной проверки
 - ios/ — Swift, SwiftUI, iOS 18+
 - android/ — Kotlin, Jetpack Compose, minSdk 29, compileSdk/targetSdk 37, без Google Play Services
 
