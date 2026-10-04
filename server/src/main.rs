@@ -10,9 +10,9 @@ use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::Duration;
 
-use staya_server::auth;
 use staya_server::db;
 use staya_server::http::{AppState, Config, app};
+use staya_server::{auth, envelopes};
 use tracing_subscriber::filter::LevelFilter;
 
 fn env(name: &str) -> Option<String> {
@@ -100,13 +100,15 @@ async fn main() -> ExitCode {
     }
 }
 
-/// Раз в 10 минут удаляет просроченные challenge и сессии.
+/// Раз в 10 минут удаляет просроченное: challenge, сессии, сообщения и слоты.
 async fn janitor(pool: deadpool_postgres::Pool) {
     let mut tick = tokio::time::interval(Duration::from_secs(600));
     loop {
         tick.tick().await;
-        if auth::purge_expired(&pool).await.is_err() {
-            tracing::warn!("cleanup of expired sessions failed");
+        if auth::purge_expired(&pool).await.is_err()
+            || envelopes::purge_expired(&pool).await.is_err()
+        {
+            tracing::warn!("cleanup of expired data failed");
         }
     }
 }

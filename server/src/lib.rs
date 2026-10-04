@@ -2,6 +2,7 @@
 
 pub mod auth;
 pub mod db;
+pub mod envelopes;
 pub mod http;
 pub mod keys;
 pub mod mailbox;

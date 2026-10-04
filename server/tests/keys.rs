@@ -8,7 +8,7 @@ use axum::Router;
 use axum::http::StatusCode;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use common::{Client, call, call_auth, login, setup};
+use common::{Client, account, call, call_auth, setup};
 use ed25519_dalek::{Signature, Signer, VerifyingKey};
 use serde_json::{Value, json};
 use staya_proto::signing;
@@ -26,14 +26,6 @@ fn fallback(c: &Client) -> Value {
     let key = [0xfb; 32];
     let sig = c.key.sign(&signing::fallback_key(&key));
     json!({"key": STANDARD.encode(key), "signature": STANDARD.encode(sig.to_bytes())})
-}
-
-async fn account(app: &Router, seed: u8) -> (Client, String) {
-    let c = Client::new(seed);
-    let (s, _) = call(app, "POST", "/v1/accounts", Some(c.register_body(None))).await;
-    assert_eq!(s, StatusCode::CREATED);
-    let token = login(app, &c).await;
-    (c, token)
 }
 
 async fn count(app: &Router, token: &str) -> u64 {

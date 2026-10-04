@@ -214,3 +214,12 @@ pub async fn login(app: &Router, c: &Client) -> String {
     assert_eq!(s, StatusCode::OK, "{v}");
     v["token"].as_str().unwrap().to_owned()
 }
+
+/// Зарегистрированный и вошедший аккаунт: клиент и токен.
+pub async fn account(app: &Router, seed: u8) -> (Client, String) {
+    let c = Client::new(seed);
+    let (s, _) = call(app, "POST", "/v1/accounts", Some(c.register_body(None))).await;
+    assert_eq!(s, StatusCode::CREATED);
+    let token = login(app, &c).await;
+    (c, token)
+}

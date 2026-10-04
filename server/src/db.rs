@@ -26,6 +26,11 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "keys",
         sql: include_str!("../migrations/0002_keys.sql"),
     },
+    Migration {
+        version: 3,
+        name: "mailboxes",
+        sql: include_str!("../migrations/0003_mailboxes.sql"),
+    },
 ];
 
 /// Ключ advisory-блокировки миграций (произвольная константа).
@@ -127,5 +132,32 @@ pub async fn ping(pool: &Pool) -> bool {
     match pool.get().await {
         Ok(client) => client.simple_query("SELECT 1").await.is_ok(),
         Err(_) => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MIGRATIONS;
+
+    /// Каждый файл из `server/migrations` в списке, номера по порядку без пропусков.
+    #[test]
+    fn every_migration_file_is_listed() {
+        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/migrations");
+        let mut files: Vec<String> = std::fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .filter(|n| n.ends_with(".sql"))
+            .collect();
+        files.sort();
+        assert_eq!(files.len(), MIGRATIONS.len(), "{files:?}");
+        for (i, (file, m)) in files.iter().zip(MIGRATIONS).enumerate() {
+            let n = i32::try_from(i + 1).unwrap();
+            assert_eq!(m.version, n);
+            assert!(
+                file.starts_with(&format!("{n:04}_{}", m.name)),
+                "{file} vs {}",
+                m.name
+            );
+        }
     }
 }

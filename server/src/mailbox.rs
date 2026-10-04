@@ -1,7 +1,6 @@
-//! Правила почтовых ящиков (protocol §8.1) поверх хранилища в памяти.
-//!
-//! Задача 2.10 — dev-сервер; на этапе 3 (3.4) то же поведение переедет на
-//! PostgreSQL. Сервер не знает ничего о содержимом конвертов, кроме размера.
+//! Правила почтовых ящиков (protocol §8.1) и их реализация в памяти для
+//! dev-сервера (задача 2.10). Реализация в PostgreSQL — `envelopes.rs` (3.4).
+//! Сервер не знает ничего о содержимом конвертов, кроме размера.
 
 use std::collections::{BTreeMap, VecDeque};
 
@@ -62,16 +61,11 @@ impl Mailbox {
             .envelopes
             .into_iter()
             .map(|env| {
-                let len = env.data.0.len();
-                let size_ok = match env.kind {
-                    EnvelopeKind::Location => len == LOCATION_ENVELOPE_LEN,
-                    EnvelopeKind::Control => is_control_envelope_len(len),
-                };
-                if !size_ok {
-                    return rejected("bad size");
+                if !size_ok(env.kind, env.data.0.len()) {
+                    return rejected(BAD_SIZE);
                 }
                 if !self.knows(&env.to) {
-                    return rejected("unknown account");
+                    return rejected(UNKNOWN_ACCOUNT);
                 }
                 match env.kind {
                     EnvelopeKind::Location => {
@@ -80,7 +74,7 @@ impl Mailbox {
                     EnvelopeKind::Control => {
                         let queue = self.control.entry(env.to).or_default();
                         if queue.len() >= CONTROL_QUEUE_LIMIT {
-                            return rejected("queue full");
+                            return rejected(QUEUE_FULL);
                         }
                         self.next_seq += 1;
                         queue.push_back(QueuedControl {
@@ -128,7 +122,20 @@ impl Mailbox {
     }
 }
 
-fn rejected(reason: &str) -> EnvelopeStatus {
+/// Причины окончательного отказа (protocol §8.2.5): одинаковы в памяти и в Postgres.
+pub const BAD_SIZE: &str = "bad size";
+pub const UNKNOWN_ACCOUNT: &str = "unknown account";
+pub const QUEUE_FULL: &str = "queue full";
+
+/// Конверт точного размера для своего вида (§8.1).
+pub fn size_ok(kind: EnvelopeKind, len: usize) -> bool {
+    match kind {
+        EnvelopeKind::Location => len == LOCATION_ENVELOPE_LEN,
+        EnvelopeKind::Control => is_control_envelope_len(len),
+    }
+}
+
+pub fn rejected(reason: &str) -> EnvelopeStatus {
     EnvelopeStatus::Rejected {
         reason: reason.to_owned(),
     }
