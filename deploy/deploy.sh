@@ -26,7 +26,10 @@ done
 
 # Сначала базовая настройка (идемпотентна), затем конфиги.
 "${SSH[@]}" "$HOST" "sudo bash -s" < "$DIR/setup-server.sh"
-rsync -az -e "${SSH[*]}" "$DIR/docker-compose.yml" "$DIR/Caddyfile" "$HOST:$APP_DIR/"
+# --inplace: Caddyfile смонтирован в контейнер файлом, и Docker держит его по inode.
+# Обычный rsync кладёт новый файл рядом и переименовывает — контейнер видел бы
+# старую версию, и `caddy reload` ниже перечитал бы её же.
+rsync -az --inplace -e "${SSH[*]}" "$DIR/docker-compose.yml" "$DIR/Caddyfile" "$HOST:$APP_DIR/"
 # Имя сервера — в .env на сервере (права 600), одна строка STAYA_DOMAIN.
 "${SSH[@]}" "$HOST" "cd $APP_DIR && touch .env && chmod 600 .env && \
   { grep -v '^STAYA_DOMAIN=' .env > .env.new || true; } && echo 'STAYA_DOMAIN=$DOMAIN' >> .env.new && mv .env.new .env && chmod 600 .env"
