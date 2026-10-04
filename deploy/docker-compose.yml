@@ -18,6 +18,10 @@ services:
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ./www:/srv/www:ro
+      # Стили, шрифты и спрайты карты (deploy/update-map.sh). Монтируется родитель:
+      # update-map.sh подменяет www целиком, а смонтированный каталог Docker
+      # держал бы по старому inode.
+      - ./map:/srv/map-root:ro
       # Сертификаты и ключи переживают передеплой — иначе их выпускали бы заново.
       - caddy_data:/data
       - caddy_config:/config
@@ -87,6 +91,24 @@ services:
     ports:
       - "127.0.0.1:8082:8080"
     networks: [backend]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+  # Тайлы карты региона из вырезки Protomaps (deploy/update-map.sh).
+  tiles:
+    # go-pmtiles v1.31.2
+    image: protomaps/go-pmtiles:v1.31.2@sha256:06574f01f55a78f78f887bc7ebf729a5c093c0d6e17d9876300cfcb0758b59d3
+    restart: unless-stopped
+    command:
+      - serve
+      - /tiles
+      - --port=8080
+      - --public-url=https://${STAYA_DOMAIN:?STAYA_DOMAIN must be set in .env}/tiles
+    ports:
+      - "127.0.0.1:8083:8080"
+    volumes:
+      - ./map/tiles:/tiles:ro
     read_only: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]

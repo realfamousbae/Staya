@@ -86,6 +86,9 @@ usermod -aG docker "$DEPLOY_USER"
 
 # --- Каталоги приложения ------------------------------------------------------
 install -d -m 750 -o "$DEPLOY_USER" -g "$DEPLOY_USER" "$APP_DIR" "$APP_DIR/www"
+# Карта (deploy/update-map.sh пишет сюда от имени staya). Создаём заранее: иначе
+# Docker при первом запуске создал бы точки монтирования от root.
+install -d -m 755 -o "$DEPLOY_USER" -g "$DEPLOY_USER" "$APP_DIR/map" "$APP_DIR/map/tiles" "$APP_DIR/map/www"
 # Сборщик метрик работает в distroless как nonroot (uid 65532).
 install -d -m 700 -o 65532 -g 65532 "$APP_DIR/probe-data"
 if [ ! -f "$APP_DIR/www/mtu-64k.bin" ]; then

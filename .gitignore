@@ -47,3 +47,6 @@ core/fuzz/target/
 core/fuzz/corpus/
 core/fuzz/artifacts/
 core/fuzz/coverage/
+
+# Генератор стилей карты (tools/map-style)
+node_modules/
