@@ -100,6 +100,11 @@ impl ServerBinding {
         Ok(binding)
     }
 
+    /// Забыть привязку (онбординг: регистрация не удалась, адрес ввели неверно).
+    pub fn forget(store: &Store) -> Result<(), CoreError> {
+        store.delete_secret(RECORD)
+    }
+
     /// Правило доверия §5.3 для SHA-256 SPKI предъявленного ключа. Вызывается
     /// после обычной проверки цепочки сертификата и до отправки запроса.
     pub fn check_key(

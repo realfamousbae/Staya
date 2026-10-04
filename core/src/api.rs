@@ -32,6 +32,13 @@ struct Inner {
     server: Option<ServerBinding>,
 }
 
+/// Свой профиль, который друзья получают по E2E (§6).
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct MyProfile {
+    pub nick: String,
+    pub avatar: Vec<u8>,
+}
+
 /// Сервер аккаунта (protocol §5.3).
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
 pub struct ServerInfo {
@@ -286,6 +293,16 @@ impl StayaCore {
 
     // --- Друзья -----------------------------------------------------------
 
+    /// Свой профиль; пустой ник — онбординг не завершён.
+    pub fn my_profile(&self) -> Result<MyProfile, CoreError> {
+        let p = self.lock()?.friends.profile();
+        Ok(MyProfile {
+            nick: p.nick,
+            avatar: p.avatar,
+        })
+    }
+
+    /// Ник — до 64 байт UTF-8, аватар — до 8 КБ (protocol §6); иначе ошибка.
     pub fn set_profile(&self, nick: String, avatar: Vec<u8>) -> Result<(), CoreError> {
         let mut g = self.lock()?;
         let Inner { store, friends, .. } = &mut *g;
@@ -373,6 +390,18 @@ impl StayaCore {
             Err(_) => Invite::parse(&uri)?.server,
         };
         bind(self, &server)
+    }
+
+    /// Отвязать аккаунт от сервера — только пока нет ни друзей, ни приглашений в
+    /// ожидании: иначе их связь со старым сервером потерялась бы.
+    pub fn reset_server(&self) -> Result<(), CoreError> {
+        let mut g = self.lock()?;
+        if !g.friends.list().is_empty() || g.friends.has_pending_invites() {
+            return Err(CoreError::Invalid("account already has friends"));
+        }
+        ServerBinding::forget(&g.store)?;
+        g.server = None;
+        Ok(())
     }
 
     /// Правило доверия к ключу TLS сервера (§5.3). `spki_sha256` — SHA-256 от

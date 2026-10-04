@@ -31,6 +31,12 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.runtime.LaunchedEffect
+import io.github.realfamousbae.staya.ui.AppModel
+import io.github.realfamousbae.staya.ui.HomeScreen
+import io.github.realfamousbae.staya.ui.OnboardingScreen
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -60,7 +66,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    ProbeScreen(resumes)
+                    Root(resumes)
                 }
             }
         }
@@ -76,6 +82,41 @@ class MainActivity : ComponentActivity() {
     override fun onPause() {
         Probe.uiVisible = false
         super.onPause()
+    }
+}
+
+/**
+ * Корень: ядро открывается лениво, затем онбординг или главный экран (4.2).
+ * Экран замеров этапа 1 — по кнопке: замеры не зависят от аккаунта.
+ */
+@Composable
+private fun Root(refresh: Int) {
+    var showProbe by remember { mutableStateOf(false) }
+    Column(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
+        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = { showProbe = !showProbe }) { Text(if (showProbe) "Назад" else "Замеры") }
+        }
+        if (showProbe) {
+            ProbeScreen(refresh)
+            return@Column
+        }
+        when (val state = AppCore.state) {
+            is AppCore.State.Open -> {
+                LaunchedEffect(state) { AppModel.refresh(state.core, state.accountId) }
+                when (val phase = AppModel.phase) {
+                    AppModel.Phase.Loading -> CircularProgressIndicator(modifier = Modifier.padding(16.dp))
+                    AppModel.Phase.Onboarding -> OnboardingScreen(state.core, state.accountId)
+                    is AppModel.Phase.Ready -> HomeScreen(phase.nick, phase.server, phase.accountId)
+                }
+            }
+            AppCore.State.Closed, AppCore.State.Opening -> CircularProgressIndicator(modifier = Modifier.padding(16.dp))
+            is AppCore.State.Unavailable -> Text("Не удалось открыть данные: ${state.reason}", modifier = Modifier.padding(16.dp))
+            is AppCore.State.Broken -> Column(modifier = Modifier.padding(16.dp)) {
+                Text("Данные повреждены: ${state.reason}")
+                val context = androidx.compose.ui.platform.LocalContext.current
+                OutlinedButton(onClick = { AppCore.resetAsync(context) }) { Text("Сбросить локальные данные") }
+            }
+        }
     }
 }
 
@@ -108,7 +149,6 @@ private fun ProbeScreen(@Suppress("UNUSED_PARAMETER") refresh: Int) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .safeDrawingPadding()
             .verticalScroll(rememberScrollState())
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),

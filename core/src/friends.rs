@@ -438,6 +438,16 @@ impl Friends {
     }
 
     /// Меняет свой профиль и рассылает его активным друзьям.
+    /// Есть выданные, ещё не использованные приглашения.
+    pub fn has_pending_invites(&self) -> bool {
+        !self.invites.is_empty()
+    }
+
+    /// Свой профиль (ник и аватар).
+    pub fn profile(&self) -> Profile {
+        Profile::from(&self.profile)
+    }
+
     pub fn set_profile(&mut self, store: &Store, profile: Profile) -> Result<(), CoreError> {
         // Проверяем ограничения размеров до сохранения.
         ControlMessage::Profile(profile.clone()).encode()?;

@@ -344,6 +344,38 @@ fn invite_carries_the_bound_server_and_pins() {
 }
 
 #[test]
+fn server_can_be_reset_only_before_friends() {
+    let (_d, core) = fresh();
+    core.set_server("typo.example".into(), vec![]).unwrap();
+    core.reset_server().unwrap();
+    assert_eq!(core.server().unwrap(), None);
+    core.set_server("right.example".into(), vec![]).unwrap();
+    // Выданное приглашение привязано к серверу — отвязать уже нельзя.
+    core.create_invite(InviteMethod::Qr, T0).unwrap();
+    assert!(core.reset_server().is_err());
+    assert_eq!(core.server().unwrap().unwrap().host, "right.example");
+}
+
+#[test]
+fn own_profile_round_trip() {
+    let (_d, core) = fresh();
+    assert_eq!(core.my_profile().unwrap().nick, "");
+    core.set_profile("Лёша".into(), vec![1, 2, 3]).unwrap();
+    let p = core.my_profile().unwrap();
+    assert_eq!(
+        (p.nick.as_str(), p.avatar.as_slice()),
+        ("Лёша", &[1u8, 2, 3][..])
+    );
+    assert!(core.set_profile("x".repeat(65), vec![]).is_err());
+    assert!(core.set_profile("ok".into(), vec![0; 8193]).is_err());
+    assert_eq!(
+        core.my_profile().unwrap().nick,
+        "Лёша",
+        "failed update keeps the old profile"
+    );
+}
+
+#[test]
 fn account_is_bound_to_one_server() {
     let (_d, core) = fresh();
     let link = "staya://server?v=1&s=a.example";
