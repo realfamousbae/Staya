@@ -21,6 +21,8 @@ class CoreSync(private val core: StayaCore, private val http: StayaHttp) {
     }
 
     fun accept(uri: String) {
+        // Новый аккаунт берёт сервер из приглашения (protocol §5.3).
+        core.setServerFromLink(uri)
         val info = core.parseInvite(uri)
         val claimed = http.post("/v1/keys/claim", JSONObject().put("account_id", info.accountId).toString())
         core.acceptInvite(uri, claimed, now())

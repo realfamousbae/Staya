@@ -5,10 +5,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use staya_core::api::{CoreEvent, InviteMethod, StayaCore};
 use staya_core::friends::Location;
-use staya_proto::api::{
-    B64, ChallengeRequest, ChallengeResponse, ClaimRequest, KeyCountResponse, VerifyRequest,
-    VerifyResponse,
-};
+use staya_proto::api::{B64, ClaimRequest, KeyCountResponse};
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 
@@ -61,9 +58,10 @@ impl Peer {
     }
 
     /// Настоящий сервер: регистрация и вход по подписи (protocol §4.1–4.2).
-    /// `domain` — имя сервера, которое он ждёт в подписи входа; `invite_code` —
-    /// код приглашения закрытого сервера.
+    /// `domain` — имя сервера (оно же — привязка аккаунта и имя в подписи
+    /// входа); `invite_code` — код приглашения закрытого сервера.
     pub fn login(&mut self, domain: &str, invite_code: Option<String>) -> Result<(), Error> {
+        self.core.set_server(domain.to_owned(), Vec::new())?;
         let register = self.core.register_request(invite_code)?;
         let r = self
             .agent
@@ -71,31 +69,24 @@ impl Peer {
             .header("Content-Type", "application/json")
             .send(&register)?;
         Self::check(r, "/v1/accounts")?;
-        let challenge = serde_json::to_string(&ChallengeRequest {
-            account_id: staya_proto::AccountId::from_b64(&self.id)?,
-        })?;
         let r = self
             .agent
             .post(self.url("/v1/auth/challenge"))
             .header("Content-Type", "application/json")
-            .send(&challenge)?;
-        let nonce: ChallengeResponse =
-            serde_json::from_str(&Self::check(r, "/v1/auth/challenge")?)?;
-        let signature = self
-            .core
-            .sign_auth(domain.to_owned(), nonce.nonce.0.clone())?;
-        let verify = serde_json::to_string(&VerifyRequest {
-            account_id: staya_proto::AccountId::from_b64(&self.id)?,
-            nonce: nonce.nonce,
-            signature: B64(signature),
-        })?;
+            .send(&self.core.auth_challenge_request()?)?;
+        let challenge = Self::check(r, "/v1/auth/challenge")?;
         let r = self
             .agent
             .post(self.url("/v1/auth/verify"))
             .header("Content-Type", "application/json")
-            .send(&verify)?;
-        let session: VerifyResponse = serde_json::from_str(&Self::check(r, "/v1/auth/verify")?)?;
-        self.token = Some(base64_std(&session.token.0));
+            .send(&self.core.auth_verify_request(challenge)?)?;
+        self.core
+            .complete_login(Self::check(r, "/v1/auth/verify")?)?;
+        let token = self
+            .core
+            .session_token(now())?
+            .ok_or("no session after login")?;
+        self.token = Some(base64_std(&token));
         Ok(())
     }
 
@@ -140,10 +131,10 @@ impl Peer {
         Ok(())
     }
 
+    /// Приглашение с сервером `server` (он же становится привязкой аккаунта).
     pub fn create_invite(&self, server: &str) -> Result<String, Error> {
-        Ok(self
-            .core
-            .create_invite(server.to_owned(), Vec::new(), InviteMethod::Qr, now())?)
+        self.core.set_server(server.to_owned(), Vec::new())?;
+        Ok(self.core.create_invite(InviteMethod::Qr, now())?)
     }
 
     /// Кладёт приглашение на `/dev/invite` для собеседника.
@@ -167,6 +158,8 @@ impl Peer {
     }
 
     pub fn accept(&self, uri: &str) -> Result<(), Error> {
+        // Новый аккаунт берёт сервер из приглашения (§5.3).
+        self.core.set_server_from_link(uri.to_owned())?;
         let info = self.core.parse_invite(uri.to_owned())?;
         let claim = serde_json::to_string(&ClaimRequest {
             account_id: staya_proto::AccountId::from_b64(&info.account_id)?,

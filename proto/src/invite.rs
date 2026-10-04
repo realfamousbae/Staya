@@ -12,6 +12,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use crate::{AccountId, ProtoError};
 
 const PREFIX: &str = "staya://add?";
+const SERVER_PREFIX: &str = "staya://server?";
 const VERSION: &str = "1";
 
 /// Как приглашение было передано — от этого зависит статус проверки (§5.1).
@@ -47,6 +48,57 @@ impl ServerRef {
             return Err(ProtoError::Invalid("duplicate server pin"));
         }
         Ok(Self { host, pins })
+    }
+
+    /// `&p=<a>.<b>` или пусто.
+    fn pins_param(&self) -> String {
+        if self.pins.is_empty() {
+            return String::new();
+        }
+        let pins: Vec<String> = self
+            .pins
+            .iter()
+            .map(|p| URL_SAFE_NO_PAD.encode(p))
+            .collect();
+        format!("&p={}", pins.join("."))
+    }
+
+    /// Ссылка на сервер `staya://server?v=1&s=…&p=…` (§5.3): для первого
+    /// пользователя сервера, у которого ещё нет приглашения.
+    pub fn to_link(&self) -> String {
+        format!(
+            "{SERVER_PREFIX}v={VERSION}&s={}{}",
+            self.host,
+            self.pins_param()
+        )
+    }
+
+    pub fn parse_link(uri: &str) -> Result<Self, ProtoError> {
+        let query = uri
+            .strip_prefix(SERVER_PREFIX)
+            .ok_or(ProtoError::Invalid("server link scheme"))?;
+        let (mut v, mut srv, mut pin) = (None, None, None);
+        for pair in query.split('&') {
+            let (key, value) = pair
+                .split_once('=')
+                .ok_or(ProtoError::Invalid("server link query"))?;
+            let slot = match key {
+                "v" => &mut v,
+                "s" => &mut srv,
+                "p" => &mut pin,
+                _ => continue,
+            };
+            if slot.replace(value).is_some() {
+                return Err(ProtoError::Invalid("duplicate server link parameter"));
+            }
+        }
+        if v != Some(VERSION) {
+            return Err(ProtoError::Invalid("server link version"));
+        }
+        Self::new(
+            srv.ok_or(ProtoError::Invalid("server link host"))?,
+            decode_pins(pin)?,
+        )
     }
 
     /// Имя хоста по правилам DNS (буквы, цифры, `-`, `.`) или IPv4, плюс `:порт`.
@@ -108,17 +160,7 @@ impl Invite {
             InviteMethod::Qr => "q",
             InviteMethod::Link => "l",
         };
-        let pin = if self.server.pins.is_empty() {
-            String::new()
-        } else {
-            let pins: Vec<String> = self
-                .server
-                .pins
-                .iter()
-                .map(|p| URL_SAFE_NO_PAD.encode(p))
-                .collect();
-            format!("&p={}", pins.join("."))
-        };
+        let pin = self.server.pins_param();
         format!(
             "{PREFIX}v={VERSION}&s={}{pin}&id={}&ik={}&sk={}&t={}&m={m}",
             self.server.host,
@@ -162,14 +204,10 @@ impl Invite {
             Some("l") => InviteMethod::Link,
             _ => return Err(ProtoError::Invalid("invite method")),
         };
-        let pins = match pin {
-            Some(list) => list
-                .split('.')
-                .map(|p| decode_array(Some(p), "invite server pin"))
-                .collect::<Result<Vec<_>, _>>()?,
-            None => Vec::new(),
-        };
-        let server = ServerRef::new(srv.ok_or(ProtoError::Invalid("invite server"))?, pins)?;
+        let server = ServerRef::new(
+            srv.ok_or(ProtoError::Invalid("invite server"))?,
+            decode_pins(pin)?,
+        )?;
         Ok(Self {
             server,
             account_id: AccountId::from_b64(id.ok_or(ProtoError::Invalid("invite id"))?)?,
@@ -178,6 +216,17 @@ impl Invite {
             token: decode_array(t, "invite token")?,
             method,
         })
+    }
+}
+
+/// `p=<a>.<b>` → отпечатки (§5.3).
+fn decode_pins(list: Option<&str>) -> Result<Vec<[u8; 32]>, ProtoError> {
+    match list {
+        Some(list) => list
+            .split('.')
+            .map(|p| decode_array(Some(p), "server pin"))
+            .collect(),
+        None => Ok(Vec::new()),
     }
 }
 
@@ -263,6 +312,27 @@ mod tests {
         let no_pin = Invite::parse(&invite(InviteMethod::Link, vec![]).to_uri()).unwrap();
         assert!(no_pin.server.pins.is_empty());
         assert!(!invite(InviteMethod::Link, vec![]).to_uri().contains("&p="));
+    }
+
+    #[test]
+    fn server_link_roundtrip() {
+        let srv = ServerRef::new("Staya.Example.org:8443", vec![[1; 32], [2; 32]]).unwrap();
+        let link = srv.to_link();
+        assert!(link.starts_with("staya://server?v=1&s=staya.example.org:8443&p="));
+        assert_eq!(ServerRef::parse_link(&link).unwrap(), srv);
+        let tofu = ServerRef::new("a.example", vec![]).unwrap();
+        assert_eq!(tofu.to_link(), "staya://server?v=1&s=a.example");
+        assert_eq!(ServerRef::parse_link(&tofu.to_link()).unwrap(), tofu);
+        for bad in [
+            "staya://add?v=1&s=a.example",
+            "staya://server?s=a.example",
+            "staya://server?v=1",
+            "staya://server?v=1&s=bad host",
+            "staya://server?v=1&s=a.example&s=b.example",
+            "staya://server?v=1&s=a.example&p=AAAA",
+        ] {
+            assert!(ServerRef::parse_link(bad).is_err(), "{bad}");
+        }
     }
 
     #[test]

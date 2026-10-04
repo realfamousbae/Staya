@@ -11,8 +11,9 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use staya_proto::AccountId;
 use staya_proto::api::{
-    AckRequest, B64, ClaimResponse, EnvelopeStatus, MailboxResponse, OutgoingEnvelope, SendRequest,
-    SendResponse, WsEvent,
+    AckRequest, B64, ChallengeRequest, ChallengeResponse, ClaimResponse, EnvelopeStatus,
+    MailboxResponse, OutgoingEnvelope, SendRequest, SendResponse, VerifyRequest, VerifyResponse,
+    WsEvent,
 };
 use staya_proto::control::Profile;
 use staya_proto::invite::{Invite, InviteMethod as ProtoInviteMethod, ServerRef};
@@ -21,12 +22,35 @@ use staya_proto::location::{LocationKind as ProtoLocationKind, LocationPayload};
 use crate::CoreError;
 use crate::account::LocalAccount;
 use crate::friends::{Event, FriendState, Friends, Location, Precision, Sharing};
+use crate::server::{ServerBinding, ServerTrust};
 use crate::store::{DbKey, Store};
 
 struct Inner {
     store: Store,
     account: LocalAccount,
     friends: Friends,
+    server: Option<ServerBinding>,
+}
+
+/// Сервер аккаунта (protocol §5.3).
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct ServerInfo {
+    /// `host` или `host:port` — куда подключаться и имя для проверки TLS.
+    pub host: String,
+    /// Отпечатки SHA-256 SPKI из приглашения или ссылки на сервер.
+    pub pins: Vec<Vec<u8>>,
+    /// Ключ, запомненный при первом подключении (когда отпечатков нет).
+    pub learned_pin: Option<Vec<u8>>,
+}
+
+impl ServerInfo {
+    fn from_binding(b: &ServerBinding) -> Self {
+        Self {
+            host: b.server().host.clone(),
+            pins: b.server().pins.iter().map(|p| p.to_vec()).collect(),
+            learned_pin: b.learned().map(|p| p.to_vec()),
+        }
+    }
 }
 
 /// Ядро Staya на устройстве.
@@ -207,11 +231,13 @@ impl StayaCore {
             None => LocalAccount::create(&store)?,
         };
         let friends = Friends::load(&store)?;
+        let server = ServerBinding::load(&store)?;
         Ok(Arc::new(Self {
             inner: Mutex::new(Inner {
                 store,
                 account,
                 friends,
+                server,
             }),
         }))
     }
@@ -266,30 +292,17 @@ impl StayaCore {
         friends.set_profile(store, Profile { nick, avatar })
     }
 
-    /// Ссылка `staya://add?...` для QR или отправки другу.
-    /// `server` — сервер этого аккаунта (`host` или `host:port`), `server_pins` —
-    /// ноль, один или два SHA-256 от SPKI его ключей TLS: основной и запасной
-    /// (protocol §5.3).
-    pub fn create_invite(
-        &self,
-        server: String,
-        server_pins: Vec<Vec<u8>>,
-        method: InviteMethod,
-        now: i64,
-    ) -> Result<String, CoreError> {
-        let pins = server_pins
-            .iter()
-            .map(|p| {
-                <[u8; 32]>::try_from(p.as_slice()).map_err(|_| CoreError::Invalid("server pin"))
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        let server = ServerRef::new(&server, pins)?;
+    /// Ссылка `staya://add?...` для QR или отправки другу — с сервером из
+    /// привязки аккаунта (protocol §5.3).
+    pub fn create_invite(&self, method: InviteMethod, now: i64) -> Result<String, CoreError> {
         let mut g = self.lock()?;
         let Inner {
             store,
             account,
             friends,
+            server,
         } = &mut *g;
+        let server = server.as_ref().ok_or(CoreError::NoServer)?.server().clone();
         Ok(friends
             .create_invite(store, &account.identity(), &server, method.into(), now)?
             .to_uri())
@@ -318,14 +331,126 @@ impl StayaCore {
         now: i64,
     ) -> Result<(), CoreError> {
         let invite = Invite::parse(&uri)?;
-        let claimed: ClaimResponse = from_json(&claim_response_json)?;
         let mut g = self.lock()?;
         let Inner {
             store,
             account,
             friends,
+            server,
         } = &mut *g;
+        // Ключ друга запрашивается у своего сервера: он должен быть сервером приглашения.
+        match server {
+            Some(b) if b.server().host == invite.server.host => {}
+            Some(_) => return Err(CoreError::ServerMismatch),
+            None => return Err(CoreError::NoServer),
+        }
+        let claimed: ClaimResponse = from_json(&claim_response_json)?;
         friends.accept_invite(store, account, &invite, &claimed, now)
+    }
+
+    // --- Сервер аккаунта (protocol §5.3) ----------------------------------
+
+    pub fn server(&self) -> Result<Option<ServerInfo>, CoreError> {
+        Ok(self.lock()?.server.as_ref().map(ServerInfo::from_binding))
+    }
+
+    /// Привязывает аккаунт к серверу (`host` или `host:port` и отпечатки). Другой
+    /// сервер при уже существующей привязке — `ServerMismatch`.
+    pub fn set_server(&self, host: String, pins: Vec<Vec<u8>>) -> Result<ServerInfo, CoreError> {
+        let pins = pins
+            .iter()
+            .map(|p| {
+                <[u8; 32]>::try_from(p.as_slice()).map_err(|_| CoreError::Invalid("server pin"))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        bind(self, &ServerRef::new(&host, pins)?)
+    }
+
+    /// То же по ссылке на сервер `staya://server?...` или приглашению `staya://add?...`.
+    pub fn set_server_from_link(&self, uri: String) -> Result<ServerInfo, CoreError> {
+        let server = match ServerRef::parse_link(&uri) {
+            Ok(s) => s,
+            Err(_) => Invite::parse(&uri)?.server,
+        };
+        bind(self, &server)
+    }
+
+    /// Правило доверия к ключу TLS сервера (§5.3). `spki_sha256` — SHA-256 от
+    /// SubjectPublicKeyInfo предъявленного ключа; вызывать после обычной проверки
+    /// цепочки и до отправки запроса. `Rejected` — разорвать соединение.
+    pub fn check_server_key(&self, spki_sha256: Vec<u8>) -> Result<ServerTrust, CoreError> {
+        let key: [u8; 32] = spki_sha256
+            .try_into()
+            .map_err(|_| CoreError::Invalid("server key hash"))?;
+        let mut g = self.lock()?;
+        let Inner { store, server, .. } = &mut *g;
+        server
+            .as_mut()
+            .ok_or(CoreError::NoServer)?
+            .check_key(store, &key)
+    }
+
+    /// Действующий токен сессии для `Authorization: Bearer` или `None` — войти.
+    pub fn session_token(&self, now: i64) -> Result<Option<Vec<u8>>, CoreError> {
+        let g = self.lock()?;
+        let b = g.server.as_ref().ok_or(CoreError::NoServer)?;
+        Ok(b.session(now).map(<[u8]>::to_vec))
+    }
+
+    /// JSON для `POST /v1/auth/challenge`.
+    pub fn auth_challenge_request(&self) -> Result<String, CoreError> {
+        let g = self.lock()?;
+        to_json(&ChallengeRequest {
+            account_id: g.account.identity().account_id,
+        })
+    }
+
+    /// JSON для `POST /v1/auth/verify` по ответу на challenge: подпись с именем
+    /// своего сервера (§4.2).
+    pub fn auth_verify_request(
+        &self,
+        challenge_response_json: String,
+    ) -> Result<String, CoreError> {
+        let challenge: ChallengeResponse = from_json(&challenge_response_json)?;
+        let nonce: [u8; 32] = challenge
+            .nonce
+            .0
+            .as_slice()
+            .try_into()
+            .map_err(|_| CoreError::Invalid("nonce"))?;
+        let g = self.lock()?;
+        let domain = g.server.as_ref().ok_or(CoreError::NoServer)?.auth_domain();
+        let account_id = g.account.identity().account_id;
+        to_json(&VerifyRequest {
+            account_id,
+            nonce: B64(nonce.to_vec()),
+            signature: g.account.sign_auth(domain, &nonce)?,
+        })
+    }
+
+    /// Сохраняет токен из ответа `POST /v1/auth/verify`.
+    pub fn complete_login(&self, verify_response_json: String) -> Result<(), CoreError> {
+        let resp: VerifyResponse = from_json(&verify_response_json)?;
+        if resp.token.0.len() != 32 {
+            return Err(CoreError::Invalid("session token"));
+        }
+        let mut g = self.lock()?;
+        let Inner { store, server, .. } = &mut *g;
+        server.as_mut().ok_or(CoreError::NoServer)?.set_session(
+            store,
+            resp.token.0,
+            resp.expires_at,
+        )
+    }
+
+    /// Забыть токен: сервер ответил 401.
+    pub fn clear_session(&self) -> Result<(), CoreError> {
+        let mut g = self.lock()?;
+        let Inner { store, server, .. } = &mut *g;
+        match server.as_mut() {
+            Some(b) => b.clear_session(store),
+            None => Ok(()),
+        }
     }
 
     pub fn list_friends(&self) -> Result<Vec<FriendView>, CoreError> {
@@ -410,6 +535,7 @@ impl StayaCore {
             store,
             account,
             friends,
+            ..
         } = &mut *g;
         let mut events = Vec::new();
         let mut acks = Vec::new();
@@ -505,6 +631,27 @@ impl StayaCore {
         // После паники посреди операции состояние в памяти может расходиться
         // с базой: дальше работать нельзя, приложение должно открыть ядро заново.
         self.inner.lock().map_err(|_| CoreError::Poisoned)
+    }
+}
+
+/// Привязка к серверу; при ошибке прежняя привязка остаётся как была.
+fn bind(core: &StayaCore, server: &ServerRef) -> Result<ServerInfo, CoreError> {
+    let mut g = core.lock()?;
+    let Inner {
+        store,
+        server: current,
+        ..
+    } = &mut *g;
+    match ServerBinding::bind(store, current.take(), server) {
+        Ok(b) => {
+            let info = ServerInfo::from_binding(&b);
+            *current = Some(b);
+            Ok(info)
+        }
+        Err(e) => {
+            *current = ServerBinding::load(store)?;
+            Err(e)
+        }
     }
 }
 

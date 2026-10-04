@@ -6,6 +6,7 @@ pub mod friends;
 #[cfg(any(test, feature = "fuzzing"))]
 pub mod fuzzing;
 pub mod safety;
+pub mod server;
 pub mod store;
 
 uniffi::setup_scaffolding!();
@@ -41,6 +42,10 @@ pub enum CoreError {
     InvalidInvite(&'static str),
     #[error(transparent)]
     Proto(#[from] staya_proto::ProtoError),
+    #[error("this account is bound to another server")]
+    ServerMismatch,
+    #[error("no server is set for this account")]
+    NoServer,
 }
 
 /// Версия ядра — проверка, что конвейер Rust → Swift/Kotlin работает.

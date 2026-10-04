@@ -7,6 +7,7 @@ use std::sync::Arc;
 use staya_core::CoreError;
 use staya_core::api::{CoreEvent, InviteMethod, LocationKind, StayaCore};
 use staya_core::friends::{Location, Precision};
+use staya_core::server::ServerTrust;
 use staya_proto::AccountId;
 use staya_proto::api::{
     AckRequest, ClaimResponse, EnvelopeKind, EnvelopeStatus, LocationSlot, MailboxResponse,
@@ -118,6 +119,7 @@ impl App {
         let path = dir.path().join("staya.db").to_string_lossy().into_owned();
         let core = StayaCore::open(path, vec![42; 32]).unwrap();
         let id = core.identity().unwrap().account_id;
+        core.set_server("staya.test".into(), vec![]).unwrap();
         Self {
             _dir: dir,
             core,
@@ -160,10 +162,7 @@ fn befriend(alice: &App, bob: &App, server: &mut JsonServer) {
     server.publish(&alice.id, &keys);
     alice.core.mark_keys_published().unwrap();
 
-    let uri = alice
-        .core
-        .create_invite("staya.test".into(), vec![], InviteMethod::Qr, T0)
-        .unwrap();
+    let uri = alice.core.create_invite(InviteMethod::Qr, T0).unwrap();
     let info = bob.core.parse_invite(uri.clone()).unwrap();
     assert_eq!(info.account_id, alice.id);
     // Друг подключится к серверу пригласившего (protocol §5.3).
@@ -304,40 +303,201 @@ fn only_one_open_handle_and_only_the_right_key() {
     ));
 }
 
+fn fresh() -> (tempfile::TempDir, Arc<StayaCore>) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("staya.db").to_string_lossy().into_owned();
+    (dir, StayaCore::open(path, vec![7; 32]).unwrap())
+}
+
 #[test]
-fn invite_carries_server_and_pins() {
-    let app = App::new();
-    let uri = app
-        .core
-        .create_invite(
-            "Self.Hosted.Example:8443".into(),
-            vec![vec![5; 32], vec![6; 32]],
-            InviteMethod::Link,
-            T0,
-        )
-        .unwrap();
-    let info = app.core.parse_invite(uri).unwrap();
+fn invite_carries_the_bound_server_and_pins() {
+    let (_d, core) = fresh();
+    assert!(matches!(
+        core.create_invite(InviteMethod::Qr, T0),
+        Err(CoreError::NoServer)
+    ));
+    core.set_server(
+        "Self.Hosted.Example:8443".into(),
+        vec![vec![5; 32], vec![6; 32]],
+    )
+    .unwrap();
+    let uri = core.create_invite(InviteMethod::Link, T0).unwrap();
+    let info = core.parse_invite(uri).unwrap();
     assert_eq!(info.server, "self.hosted.example:8443");
     assert_eq!(info.server_pins, vec![vec![5; 32], vec![6; 32]]);
+
+    let (_d, other) = fresh();
+    for bad in [
+        ("ok.example", vec![vec![1; 32], vec![2; 32], vec![3; 32]]),
+        ("bad host", vec![]),
+    ] {
+        assert!(matches!(
+            other.set_server(bad.0.into(), bad.1),
+            Err(CoreError::Proto(_))
+        ));
+    }
     assert!(matches!(
-        app.core.create_invite(
-            "ok.example".into(),
-            vec![vec![1; 32], vec![2; 32], vec![3; 32]],
-            InviteMethod::Qr,
-            T0
-        ),
-        Err(CoreError::Proto(_))
-    ));
-    assert!(matches!(
-        app.core
-            .create_invite("bad host".into(), vec![], InviteMethod::Qr, T0),
-        Err(CoreError::Proto(_))
-    ));
-    assert!(matches!(
-        app.core
-            .create_invite("ok.example".into(), vec![vec![1; 5]], InviteMethod::Qr, T0),
+        other.set_server("ok.example".into(), vec![vec![1; 5]]),
         Err(CoreError::Invalid(_))
     ));
+    assert_eq!(other.server().unwrap(), None);
+}
+
+#[test]
+fn account_is_bound_to_one_server() {
+    let (_d, core) = fresh();
+    let link = "staya://server?v=1&s=a.example";
+    let info = core.set_server_from_link(link.into()).unwrap();
+    assert_eq!(info.host, "a.example");
+    // Тот же сервер — можно; другой — нет, и привязка не меняется.
+    core.set_server("a.example".into(), vec![]).unwrap();
+    assert!(matches!(
+        core.set_server("b.example".into(), vec![]),
+        Err(CoreError::ServerMismatch)
+    ));
+    assert_eq!(core.server().unwrap().unwrap().host, "a.example");
+
+    // Приглашение с чужого сервера не принимается.
+    let (_d2, friend) = fresh();
+    friend.set_server("b.example".into(), vec![]).unwrap();
+    let uri = friend.create_invite(InviteMethod::Qr, T0).unwrap();
+    let claim = r#"{"key":{"key":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","signature":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"},"is_fallback":false}"#;
+    let r = core.accept_invite(uri, claim.into(), T0);
+    assert!(matches!(r, Err(CoreError::ServerMismatch)), "{r:?}");
+    // Новый аккаунт может взять сервер из приглашения.
+    let (_d3, newbie) = fresh();
+    let uri = friend.create_invite(InviteMethod::Qr, T0).unwrap();
+    assert_eq!(newbie.set_server_from_link(uri).unwrap().host, "b.example");
+}
+
+#[test]
+fn tofu_learns_once_and_never_silently_replaces() {
+    let (_d, core) = fresh();
+    assert!(matches!(
+        core.check_server_key(vec![1; 32]),
+        Err(CoreError::NoServer)
+    ));
+    core.set_server("a.example".into(), vec![]).unwrap();
+    assert_eq!(
+        core.check_server_key(vec![1; 32]).unwrap(),
+        ServerTrust::Learned
+    );
+    assert_eq!(
+        core.check_server_key(vec![1; 32]).unwrap(),
+        ServerTrust::Trusted
+    );
+    assert_eq!(
+        core.check_server_key(vec![2; 32]).unwrap(),
+        ServerTrust::Rejected
+    );
+    assert_eq!(
+        core.server().unwrap().unwrap().learned_pin,
+        Some(vec![1; 32])
+    );
+    assert!(core.check_server_key(vec![1; 5]).is_err());
+
+    // Пережил перезапуск: запомненный ключ — в зашифрованной базе.
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("staya.db").to_string_lossy().into_owned();
+    {
+        let c = StayaCore::open(path.clone(), vec![9; 32]).unwrap();
+        c.set_server("a.example".into(), vec![]).unwrap();
+        c.check_server_key(vec![3; 32]).unwrap();
+    }
+    let c = StayaCore::open(path, vec![9; 32]).unwrap();
+    assert_eq!(
+        c.check_server_key(vec![4; 32]).unwrap(),
+        ServerTrust::Rejected
+    );
+
+    // Отпечатки из приглашения для того же сервера заменяют TOFU.
+    c.set_server("a.example".into(), vec![vec![4; 32]]).unwrap();
+    assert_eq!(
+        c.check_server_key(vec![4; 32]).unwrap(),
+        ServerTrust::Trusted
+    );
+    assert_eq!(
+        c.check_server_key(vec![3; 32]).unwrap(),
+        ServerTrust::Rejected
+    );
+    assert_eq!(c.server().unwrap().unwrap().learned_pin, None);
+}
+
+#[test]
+fn pinned_server_accepts_primary_and_backup_only() {
+    let (_d, core) = fresh();
+    core.set_server("a.example".into(), vec![vec![1; 32], vec![2; 32]])
+        .unwrap();
+    assert_eq!(
+        core.check_server_key(vec![1; 32]).unwrap(),
+        ServerTrust::Trusted
+    );
+    assert_eq!(
+        core.check_server_key(vec![2; 32]).unwrap(),
+        ServerTrust::Trusted
+    );
+    assert_eq!(
+        core.check_server_key(vec![3; 32]).unwrap(),
+        ServerTrust::Rejected
+    );
+    // С отпечатками ключ не запоминается.
+    assert_eq!(core.server().unwrap().unwrap().learned_pin, None);
+}
+
+#[test]
+fn login_helpers_sign_for_the_bound_host_and_keep_the_token() {
+    let (_d, core) = fresh();
+    core.set_server("Staya.Example:8443".into(), vec![])
+        .unwrap();
+    assert_eq!(core.session_token(T0).unwrap(), None);
+    let challenge = core.auth_challenge_request().unwrap();
+    assert!(challenge.contains(&core.identity().unwrap().account_id));
+
+    let nonce = [7u8; 32];
+    let resp = format!(r#"{{"nonce":"{}"}}"#, b64(&nonce));
+    let verify: serde_json::Value =
+        serde_json::from_str(&core.auth_verify_request(resp).unwrap()).unwrap();
+    // Подпись — с именем сервера без порта (§4.2).
+    let sig = serde_json::from_value::<staya_proto::api::B64>(verify["signature"].clone())
+        .unwrap()
+        .0;
+    let me = core.identity().unwrap();
+    let msg = staya_proto::signing::auth(
+        "staya.example",
+        &nonce,
+        &AccountId::from_b64(&me.account_id).unwrap(),
+    )
+    .unwrap();
+    let pk = vodozemac::Ed25519PublicKey::from_slice(&me.sk.try_into().unwrap()).unwrap();
+    pk.verify(
+        &msg,
+        &vodozemac::Ed25519Signature::from_slice(&sig).unwrap(),
+    )
+    .unwrap();
+
+    let token = [9u8; 32];
+    core.complete_login(format!(
+        r#"{{"token":"{}","expires_at":{}}}"#,
+        b64(&token),
+        T0 + 100
+    ))
+    .unwrap();
+    assert_eq!(core.session_token(T0).unwrap(), Some(token.to_vec()));
+    assert_eq!(core.session_token(T0 + 100).unwrap(), None, "expired");
+    core.clear_session().unwrap();
+    assert_eq!(core.session_token(T0).unwrap(), None);
+    assert!(
+        core.complete_login(r#"{"token":"AAAA","expires_at":1}"#.into())
+            .is_err()
+    );
+}
+
+fn b64(bytes: &[u8]) -> String {
+    serde_json::to_value(staya_proto::api::B64(bytes.to_vec()))
+        .unwrap()
+        .as_str()
+        .unwrap()
+        .to_owned()
 }
 
 #[test]

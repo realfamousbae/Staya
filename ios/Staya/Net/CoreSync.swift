@@ -19,6 +19,8 @@ struct CoreSync: Sendable {
     }
 
     func accept(_ uri: String) async throws {
+        // Новый аккаунт берёт сервер из приглашения (protocol §5.3).
+        _ = try core.setServerFromLink(uri: uri)
         let info = try core.parseInvite(uri: uri)
         let claim = String(decoding: try JSONEncoder().encode(["account_id": info.accountId]), as: UTF8.self)
         let claimed = try await http.post("/v1/keys/claim", claim)
