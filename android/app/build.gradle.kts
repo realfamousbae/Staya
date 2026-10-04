@@ -58,9 +58,24 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.ui.tooling.preview)
     debugImplementation(libs.androidx.compose.ui.tooling)
+    // HTTP и WebSocket к серверу Staya (задача 4.1b): проверка ключа сервера при
+    // установке соединения, пул соединений, WebSocket. Без Google Play Services.
+    implementation(libs.okhttp)
 
     testImplementation(libs.junit)
+    // JVM-тесты сетевого слоя: настоящий TLS (MockWebServer + тестовые сертификаты)
+    // и настоящее ядро через JNA, как в :core.
+    testImplementation(libs.okhttp.mockwebserver)
+    testImplementation(libs.okhttp.tls)
+    testImplementation(libs.jna)
     // Только для тестов на эмуляторе: AndroidJUnitRunner и AndroidJUnit4.
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.ext.junit)
+}
+
+// JVM-тесты с настоящим ядром: собранная под хост библиотека из :core (buildHostCore).
+val repoRoot = rootProject.layout.projectDirectory.dir("..")
+tasks.withType<Test>().configureEach {
+    dependsOn(":core:buildHostCore")
+    systemProperty("jna.library.path", repoRoot.dir("target/debug").asFile.absolutePath)
 }

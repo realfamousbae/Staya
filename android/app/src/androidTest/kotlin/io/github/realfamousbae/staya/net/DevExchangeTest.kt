@@ -12,35 +12,33 @@ import uniffi.staya_core.Location
 import uniffi.staya_core.StayaCore
 
 /**
- * Обмен позициями с тестовым собеседником (`tools/dev-peer`) через dev-сервер на
- * хосте (задача 2.10). Запускается в CI с аргументом `devServer` (обычно
- * `http://10.0.2.2:8787`); без него пропускается. База — временная, не база приложения.
+ * Обмен позициями с тестовым собеседником (`tools/dev-peer --login`) через
+ * настоящий сервер Staya с PostgreSQL на хосте CI (задача 4.1b): регистрация,
+ * вход, ключи, приглашение, позиции. Аргументы инструментации: `server` — адрес
+ * сервера для эмулятора (`http://10.0.2.2:8080`), `invite` — приглашение
+ * собеседника в base64url (в `am instrument` нельзя передать `&` и `=`). Без
+ * них тест пропускается. База — временная, не база приложения.
  */
 @RunWith(AndroidJUnit4::class)
 class DevExchangeTest {
     @Test
     fun exchangesLocationsWithPeer() {
-        val server = InstrumentationRegistry.getArguments().getString("devServer")
-        assumeTrue("no devServer argument", server != null)
+        val args = InstrumentationRegistry.getArguments()
+        val server = args.getString("server")
+        val inviteB64 = args.getString("invite")
+        assumeTrue("no server/invite arguments", server != null && inviteB64 != null)
+        val invite = String(android.util.Base64.decode(inviteB64, android.util.Base64.URL_SAFE), Charsets.UTF_8)
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val db = File(context.cacheDir, "dev-exchange.db").apply { delete() }
         StayaCore.open(db.path, ByteArray(32) { 5 }).use { core ->
-            val me = core.identity().accountId
-            val http = StayaHttp(server!!) { me }
-            val sync = CoreSync(core, http)
+            // Сервер — из приглашения; адрес подключения для эмулятора — свой.
+            core.setServerFromLink(invite)
+            val client = StayaClient(core, baseUrl = server!!)
+            val sync = CoreSync(core, client)
             sync.publishKeys()
-
-            val deadline = System.currentTimeMillis() + TIMEOUT_MS
-            var invite: String? = null
-            while (invite == null) {
-                invite = runCatching { http.getPublic("/dev/invite") }.getOrNull()
-                if (invite == null) {
-                    check(System.currentTimeMillis() < deadline) { "no invite from peer" }
-                    Thread.sleep(500)
-                }
-            }
             sync.accept(invite)
 
+            val deadline = System.currentTimeMillis() + TIMEOUT_MS
             var got = false
             var gotAt = 0L
             while (!got || System.currentTimeMillis() - gotAt < LINGER_MS) {

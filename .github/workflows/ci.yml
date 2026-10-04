@@ -131,6 +131,18 @@ jobs:
   android-device:
     name: Android emulator
     runs-on: ubuntu-24.04
+    # Настоящий сервер Staya с базой для обмена с эмулятором (задача 4.1b).
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: staya
+          POSTGRES_PASSWORD: staya
+          POSTGRES_DB: staya
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U staya" --health-interval 2s --health-timeout 5s --health-retries 30
     env:
       NDK_VERSION: 29.0.14206865
     steps:
@@ -155,24 +167,29 @@ jobs:
       - name: Build app and test APKs
         working-directory: android
         run: ./gradlew --no-daemon assembleDebug assembleDebugAndroidTest
-      - name: Build dev server and peer
-        run: cargo build -p staya-server --features dev --bin staya-dev-server && cargo build -p dev-peer
+      - name: Build server and peer
+        run: cargo build -p staya-server --bin staya-server && cargo build -p dev-peer
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      # Dev-сервер и собеседник на хосте; эмулятор видит хост как 10.0.2.2.
+      # Сервер и собеседник на хосте; эмулятор видит хост как 10.0.2.2.
       # Координаты должны совпадать с DevExchangeTest.kt.
-      - name: Start dev server and peer
+      - name: Start server and peer
         run: |
           mkdir -p "$RUNNER_TEMP/staya-logs"
-          nohup target/debug/staya-dev-server > "$RUNNER_TEMP/staya-logs/dev-server.log" 2>&1 &
-          for _ in $(seq 1 50); do curl -s -o /dev/null http://127.0.0.1:8787/dev/invite && break; sleep 0.2; done
-          nohup target/debug/dev-peer --server http://127.0.0.1:8787 --role invite \
+          STAYA_DATABASE_URL=postgres://staya:staya@127.0.0.1:5432/staya STAYA_DOMAIN=staya.test \
+            STAYA_LISTEN=127.0.0.1:8080 nohup target/debug/staya-server > "$RUNNER_TEMP/staya-logs/server.log" 2>&1 &
+          for _ in $(seq 1 50); do curl -sf -o /dev/null http://127.0.0.1:8080/health && break; sleep 0.2; done
+          nohup target/debug/dev-peer --server http://127.0.0.1:8080 --login staya.test \
+            --invite-file "$RUNNER_TEMP/invite" --role invite \
             --mine 557558000,376173000 --expect 599386000,303141000 --timeout 1500 \
             > "$RUNNER_TEMP/staya-logs/dev-peer.log" 2>&1 &
-      - name: Device tests (Keystore, core, exchange with dev-peer)
+          for _ in $(seq 1 50); do [ -s "$RUNNER_TEMP/invite" ] && break; sleep 0.2; done
+          # base64url без выравнивания: в аргументах am instrument нельзя & и =.
+          echo "STAYA_INVITE_B64=$(base64 -w0 < "$RUNNER_TEMP/invite" | tr '+/' '-_' | tr -d '=')" >> "$GITHUB_ENV"
+      - name: Device tests (Keystore, core, exchange through the server)
         timeout-minutes: 30
         uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
@@ -181,12 +198,12 @@ jobs:
           arch: x86_64
           disable-animations: true
           working-directory: android
-          script: ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.devServer=http://10.0.2.2:8787
+          script: ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.server=http://10.0.2.2:8080 -Pandroid.testInstrumentationRunnerArguments.invite=${{ env.STAYA_INVITE_B64 }}
       - name: Peer got the app's location
         timeout-minutes: 2
         run: |
           for _ in $(seq 1 60); do grep -q "PEER GOT LOCATION" "$RUNNER_TEMP/staya-logs/dev-peer.log" && exit 0; sleep 1; done
           exit 1
-      - name: Dev server and peer logs
+      - name: Server and peer logs
         if: failure()
         run: cat "$RUNNER_TEMP"/staya-logs/*.log || true
