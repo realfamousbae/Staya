@@ -1,0 +1,102 @@
+{
+  "generatedAt": "2026-10-04T00:07:08.145Z",
+  "commit": "b8a2360e5abec30973cb69abef6838c3e1472f36",
+  "version": "0.1.0",
+  "files": 131,
+  "lines": 14361,
+  "code": {
+    "files": 65,
+    "lines": 9999,
+    "sourceLines": 7656,
+    "averageLines": 154,
+    "rust": 6928,
+    "swift": 1367,
+    "kotlin": 1704
+  },
+  "tests": {
+    "cases": 114,
+    "files": 12,
+    "lines": 2343
+  },
+  "languages": [
+    {
+      "name": "Rust",
+      "color": "#f97316",
+      "lines": 6928
+    },
+    {
+      "name": "Other",
+      "color": "#94a3b8",
+      "lines": 1978
+    },
+    {
+      "name": "Kotlin",
+      "color": "#8b5cf6",
+      "lines": 1869
+    },
+    {
+      "name": "Swift",
+      "color": "#f43f5e",
+      "lines": 1367
+    },
+    {
+      "name": "Config",
+      "color": "#14b8a6",
+      "lines": 1103
+    },
+    {
+      "name": "Markdown",
+      "color": "#a855f7",
+      "lines": 818
+    },
+    {
+      "name": "Shell",
+      "color": "#22c55e",
+      "lines": 298
+    }
+  ],
+  "largest": [
+    {
+      "path": "core/fuzz/Cargo.lock",
+      "lines": 1477
+    },
+    {
+      "path": "core/src/friends.rs",
+      "lines": 908
+    },
+    {
+      "path": "core/tests/friend_add.rs",
+      "lines": 579
+    },
+    {
+      "path": "core/src/api.rs",
+      "lines": 519
+    },
+    {
+      "path": "tools/probe-server/src/main.rs",
+      "lines": 501
+    }
+  ],
+  "crates": {
+    "workspace": 5,
+    "external": 204
+  },
+  "unsafeBlocks": 0,
+  "protocolVersion": "v0.2",
+  "plan": {
+    "done": 19,
+    "total": 42
+  },
+  "docs": {
+    "markdown": 8
+  },
+  "todos": 0,
+  "commits": {
+    "total": 27,
+    "last7Days": 27,
+    "last30Days": 27,
+    "lastCommit": "2026-10-04T00:06:57.000Z"
+  },
+  "contributors": 1,
+  "ageDays": 7
+}
