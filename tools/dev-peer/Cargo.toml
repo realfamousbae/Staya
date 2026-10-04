@@ -1,0 +1,27 @@
+[package]
+name = "dev-peer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Тестовый собеседник для dev-сервера (задача 2.10): второе «устройство» на
+# Rust-API ядра, с которым в CI обмениваются позициями приложения на симуляторе
+# и эмуляторе. Сеть — так же, как на платформах: JSON из staya_proto::api по HTTP.
+
+[dependencies]
+staya-core = { path = "../../core" }
+staya-proto = { path = "../../proto" }
+serde_json = { workspace = true }
+getrandom = { workspace = true }
+tempfile = "3.27.0"
+# Простой блокирующий HTTP-клиент; без TLS — dev-сервер только на loopback.
+ureq = { version = "3.4.2", default-features = false }
+
+[dev-dependencies]
+staya-server = { path = "../../server", features = ["dev"] }
+axum = { workspace = true }
+tokio = { workspace = true }
+
+[lints]
+workspace = true
