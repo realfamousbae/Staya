@@ -26,6 +26,9 @@ axum = { version = "0.8.9", default-features = false, features = ["http1", "json
 tokio = { version = "1.53.2", features = ["rt-multi-thread", "macros", "net", "fs", "io-util", "signal", "sync"] }
 tower = { version = "0.5.3", features = ["util"] }
 sha2 = "0.11.0"
+# Уже в дереве через vodozemac; сервер проверяет подписи регистрации и входа.
+ed25519-dalek = { version = "3.0.0", default-features = false, features = ["fast", "zeroize"] }
+subtle = "2.6.1"
 tokio-postgres = { version = "0.7.18", default-features = false, features = ["runtime"] }
 deadpool-postgres = { version = "0.14.2", default-features = false, features = ["rt_tokio_1"] }
 tracing = "0.1.44"

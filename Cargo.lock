@@ -1699,11 +1699,18 @@ name = "staya-server"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "base64 0.23.1",
  "deadpool-postgres",
+ "ed25519-dalek",
  "getrandom 0.4.3",
+ "http-body-util",
  "serde",
  "serde_json",
+ "sha2",
+ "staya-core",
  "staya-proto",
+ "subtle",
+ "tempfile",
  "tokio",
  "tokio-postgres",
  "tower",

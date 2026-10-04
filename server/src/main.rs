@@ -1,13 +1,18 @@
 //! Сервер Staya. Настройки — переменные окружения:
 //! - `STAYA_DATABASE_URL` — обязательно, `postgres://user:password@host:port/db`;
+//! - `STAYA_DOMAIN` — обязательно, имя сервера для подписи входа (protocol §4.2);
+//! - `STAYA_INVITE_CODE` — код приглашения на регистрацию; без него регистрация открыта;
 //! - `STAYA_LISTEN` — адрес, по умолчанию `127.0.0.1:8080`;
 //! - `STAYA_LOG` — `error` | `warn` | `info` (по умолчанию) | `debug`.
 
 use std::net::SocketAddr;
 use std::process::ExitCode;
+use std::sync::Arc;
+use std::time::Duration;
 
+use staya_server::auth;
 use staya_server::db;
-use staya_server::http::{AppState, app};
+use staya_server::http::{AppState, Config, app};
 use tracing_subscriber::filter::LevelFilter;
 
 fn env(name: &str) -> Option<String> {
@@ -29,6 +34,17 @@ async fn main() -> ExitCode {
         tracing::error!("STAYA_DATABASE_URL is not set");
         return ExitCode::FAILURE;
     };
+    let Some(domain) = env("STAYA_DOMAIN").filter(|d| d.is_ascii() && d.len() <= 255) else {
+        tracing::error!("STAYA_DOMAIN must be set to the server host name");
+        return ExitCode::FAILURE;
+    };
+    let config = Arc::new(Config {
+        domain,
+        invite_code: env("STAYA_INVITE_CODE"),
+    });
+    if config.invite_code.is_none() {
+        tracing::warn!("STAYA_INVITE_CODE is not set: registration is open");
+    }
     let addr: SocketAddr = match env("STAYA_LISTEN")
         .unwrap_or_else(|| "127.0.0.1:8080".into())
         .parse()
@@ -63,7 +79,12 @@ async fn main() -> ExitCode {
         }
     };
     tracing::info!(%addr, "listening");
-    let served = axum::serve(listener, app(AppState { pool: pool.clone() }))
+    tokio::spawn(janitor(pool.clone()));
+    let state = AppState {
+        pool: pool.clone(),
+        config,
+    };
+    let served = axum::serve(listener, app(state))
         .with_graceful_shutdown(shutdown_signal())
         .await;
     pool.close();
@@ -75,6 +96,17 @@ async fn main() -> ExitCode {
         Err(e) => {
             tracing::error!("serve: {e}");
             ExitCode::FAILURE
+        }
+    }
+}
+
+/// Раз в 10 минут удаляет просроченные challenge и сессии.
+async fn janitor(pool: deadpool_postgres::Pool) {
+    let mut tick = tokio::time::interval(Duration::from_secs(600));
+    loop {
+        tick.tick().await;
+        if auth::purge_expired(&pool).await.is_err() {
+            tracing::warn!("cleanup of expired sessions failed");
         }
     }
 }

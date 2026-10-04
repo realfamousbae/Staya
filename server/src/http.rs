@@ -6,25 +6,63 @@
 
 use std::time::Instant;
 
-use axum::Router;
-use axum::extract::{MatchedPath, Request, State};
+use std::sync::Arc;
+
+use axum::extract::{FromRequest, MatchedPath, Request, State};
 use axum::http::StatusCode;
 use axum::middleware::{self, Next};
 use axum::response::Response;
-use axum::routing::get;
+use axum::routing::{get, post};
+use axum::{Json, Router};
 use deadpool_postgres::Pool;
+use serde::de::DeserializeOwned;
+
+use crate::auth;
+
+/// Настройки сервера, не меняющиеся во время работы.
+pub struct Config {
+    /// Имя сервера в подписи входа (protocol §4.2): хост, к которому подключаются клиенты.
+    pub domain: String,
+    /// Код приглашения на регистрацию; `None` — регистрация открыта.
+    pub invite_code: Option<String>,
+}
 
 #[derive(Clone)]
 pub struct AppState {
     pub pool: Pool,
+    pub config: Arc<Config>,
 }
 
 pub fn app(state: AppState) -> Router {
     with_request_log(
         Router::new()
             .route("/health", get(health))
+            .route("/v1/accounts", post(auth::register))
+            .route("/v1/auth/challenge", post(auth::challenge))
+            .route("/v1/auth/verify", post(auth::verify_challenge))
             .with_state(state),
     )
+}
+
+/// JSON-тело запроса. При ошибке разбора — голый код ответа: текст ошибки serde
+/// мог бы повторить кусок присланных данных.
+pub struct JsonBody<T>(pub T);
+
+impl<T: DeserializeOwned, S: Send + Sync> FromRequest<S> for JsonBody<T> {
+    type Rejection = StatusCode;
+
+    async fn from_request(req: Request, state: &S) -> Result<Self, Self::Rejection> {
+        Json::<T>::from_request(req, state)
+            .await
+            .map(|Json(v)| Self(v))
+            .map_err(|e| e.status())
+    }
+}
+
+/// Внутренняя ошибка (база, пул): в журнал — только факт, без текста с данными.
+pub fn internal<E>(_: E) -> StatusCode {
+    tracing::warn!("internal error");
+    StatusCode::INTERNAL_SERVER_ERROR
 }
 
 /// Оборачивает маршруты журналом запросов. Слой ставится последним, чтобы видеть
