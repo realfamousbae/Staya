@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		AB0000000000000000000001 /* StayaCore in Frameworks */ = {isa = PBXBuildFile; productRef = AD0000000000000000000001 /* StayaCore */; };
+		AB0000000000000000000002 /* MapLibre in Frameworks */ = {isa = PBXBuildFile; productRef = AD0000000000000000000002 /* MapLibre */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -26,6 +27,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				AB0000000000000000000001 /* StayaCore in Frameworks */,
+				AB0000000000000000000002 /* MapLibre in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -79,6 +81,7 @@
 			name = Staya;
 			packageProductDependencies = (
 				AD0000000000000000000001 /* StayaCore */,
+				AD0000000000000000000002 /* MapLibre */,
 			);
 			productName = Staya;
 			productReference = A10000000000000000000001 /* Staya.app */;
@@ -106,6 +109,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				AC0000000000000000000001 /* XCLocalSwiftPackageReference "StayaCore" */,
+				AE0000000000000000000001 /* XCRemoteSwiftPackageReference "maplibre-gl-native-distribution" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = A40000000000000000000002 /* Products */;
@@ -260,10 +264,26 @@
 		};
 /* End XCLocalSwiftPackageReference section */
 
+/* Begin XCRemoteSwiftPackageReference section */
+		AE0000000000000000000001 /* XCRemoteSwiftPackageReference "maplibre-gl-native-distribution" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/maplibre/maplibre-gl-native-distribution";
+			requirement = {
+				kind = exactVersion;
+				version = 6.31.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
 		AD0000000000000000000001 /* StayaCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = StayaCore;
+		};
+		AD0000000000000000000002 /* MapLibre */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AE0000000000000000000001 /* XCRemoteSwiftPackageReference "maplibre-gl-native-distribution" */;
+			productName = MapLibre;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -44,7 +44,7 @@ struct ContentView: View {
                 case .onboarding:
                     OnboardingView(core: staya, accountId: accountId)
                 case .ready(let nick, let server, let id):
-                    HomeView(nick: nick, server: server, accountId: id)
+                    HomeView(core: staya, nick: nick, server: server, accountId: id)
                         // На экране — синхронизация и WebSocket; при уходе в фон — стоп.
                         .task(id: scenePhase) { if scenePhase == .active { friends.start(core: staya) } }
                         .task(id: app.pendingLink) {

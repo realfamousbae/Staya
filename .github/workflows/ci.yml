@@ -93,6 +93,10 @@ jobs:
         run: |
           swiftc -swift-version 6 ios/Staya/App/Qr.swift ios/CoreTests/Qr/main.swift -o "$RUNNER_TEMP/qr"
           "$RUNNER_TEMP/qr"
+      - name: Map helpers (macOS host)
+        run: |
+          swiftc -swift-version 6 ios/Staya/Map/MapMath.swift ios/CoreTests/Map/main.swift -o "$RUNNER_TEMP/map"
+          "$RUNNER_TEMP/map"
       # Для обмена через настоящий сервер: Docker на macOS-раннере нет.
       - name: PostgreSQL 18 (Homebrew)
         timeout-minutes: 15

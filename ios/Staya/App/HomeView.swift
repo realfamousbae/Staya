@@ -1,14 +1,37 @@
 import StayaCore
 import SwiftUI
 
-/// Главный экран: друзья и добавление (4.3). Карта — 4.4.
+/// Главный экран: карта друзей (4.4), под ней список и добавление (4.3).
 struct HomeView: View {
+    let core: StayaCore
     let nick: String
     let server: String
     let accountId: String
     @State private var model = FriendsModel.shared
+    @State private var focus: MapFocus?
+    @State private var now = Int64(Date().timeIntervalSince1970)
 
     var body: some View {
+        VStack(spacing: 0) {
+            FriendsMapView(core: core, friends: model.friends, now: now, focus: focus)
+                .frame(minHeight: 240)
+            list.frame(maxHeight: 380)
+        }
+        .navigationTitle(nick)
+        .navigationBarTitleDisplayMode(.inline)
+        // Подписи «N мин назад» устаревают: обновляем раз в минуту, пока экран открыт.
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(60))
+                now = Int64(Date().timeIntervalSince1970)
+            }
+        }
+        .sheet(item: $model.screen) { screen in
+            NavigationStack { FriendsSheet(screen: screen) }
+        }
+    }
+
+    private var list: some View {
         List {
             if let message = model.message {
                 Section {
@@ -21,8 +44,20 @@ struct HomeView: View {
                     Text("Пока никого. Покажи QR-код другу рядом или отправь ссылку.").foregroundStyle(.secondary)
                 }
                 ForEach(model.friends, id: \.accountId) { friend in
-                    Button { model.showSafety(friend) } label: { FriendRow(friend: friend) }
-                        .foregroundStyle(.primary)
+                    HStack {
+                        // Две кнопки в строке List: обе .borderless, иначе строка ловит нажатие целиком.
+                        Button {
+                            if let loc = friend.location, loc.kind != .hidden {
+                                focus = MapFocus(friendId: friend.accountId)
+                            }
+                        } label: { FriendRow(friend: friend, now: now) }
+                            .buttonStyle(.borderless)
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        if friend.active {
+                            Button("Код") { model.showSafety(friend) }.buttonStyle(.borderless)
+                        }
+                    }
                 }
             }
             Section("Добавить друга") {
@@ -41,16 +76,13 @@ struct HomeView: View {
                 LabeledContent("Сервер", value: server)
             }
         }
-        .navigationTitle(nick)
         .refreshable { model.reload() }
-        .sheet(item: $model.screen) { screen in
-            NavigationStack { FriendsSheet(screen: screen) }
-        }
     }
 }
 
 private struct FriendRow: View {
     let friend: FriendView
+    let now: Int64
 
     var body: some View {
         HStack {
@@ -59,9 +91,14 @@ private struct FriendRow: View {
             }
             VStack(alignment: .leading) {
                 Text(friend.nick ?? "Без имени")
-                Text(!friend.active ? "ждём ответа" : friend.verified ? "проверен" : "не проверен — сверьте код безопасности")
+                Text(friend.active ? locationStatus(friend, now: now) ?? "пока нет позиции" : "ждём ответа")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+                if friend.active && !friend.verified {
+                    Text("не проверен — сверьте код безопасности")
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                }
             }
         }
     }
