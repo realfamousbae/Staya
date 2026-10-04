@@ -1,6 +1,6 @@
 //! Приглашение в друзья: ссылка и QR (§5).
 //!
-//! `staya://add?v=1&s=<server>&p=<pin>&id=<account_id>&ik=<ik>&sk=<sk>&t=<token>&m=<q|l>`;
+//! `staya://add?v=1&s=<server>&p=<pins>&id=<account_id>&ik=<ik>&sk=<sk>&t=<token>&m=<q|l>`;
 //! `s` — сервер пригласившего (§5.3), `p` — необязательный отпечаток ключа TLS;
 //! двоичные значения — base64url без выравнивания.
 
@@ -28,15 +28,25 @@ pub enum InviteMethod {
 pub struct ServerRef {
     /// `host` или `host:port`, только ASCII; порт 443 не пишется.
     pub host: String,
-    /// SHA-256 от SubjectPublicKeyInfo ключа TLS сервера.
-    pub pin: Option<[u8; 32]>,
+    /// SHA-256 от SubjectPublicKeyInfo ключей TLS сервера: основной и запасной.
+    /// Пусто — TOFU (§5.3).
+    pub pins: Vec<[u8; 32]>,
 }
 
+/// Отпечатков в приглашении не больше: основной и запасной (§5.3).
+pub const MAX_SERVER_PINS: usize = 2;
+
 impl ServerRef {
-    pub fn new(host: &str, pin: Option<[u8; 32]>) -> Result<Self, ProtoError> {
+    pub fn new(host: &str, pins: Vec<[u8; 32]>) -> Result<Self, ProtoError> {
         let host = host.trim().to_ascii_lowercase();
         Self::validate(&host)?;
-        Ok(Self { host, pin })
+        if pins.len() > MAX_SERVER_PINS {
+            return Err(ProtoError::Invalid("too many server pins"));
+        }
+        if pins.len() == 2 && pins[0] == pins[1] {
+            return Err(ProtoError::Invalid("duplicate server pin"));
+        }
+        Ok(Self { host, pins })
     }
 
     /// Имя хоста по правилам DNS (буквы, цифры, `-`, `.`) или IPv4, плюс `:порт`.
@@ -98,11 +108,17 @@ impl Invite {
             InviteMethod::Qr => "q",
             InviteMethod::Link => "l",
         };
-        let pin = self
-            .server
-            .pin
-            .map(|p| format!("&p={}", URL_SAFE_NO_PAD.encode(p)))
-            .unwrap_or_default();
+        let pin = if self.server.pins.is_empty() {
+            String::new()
+        } else {
+            let pins: Vec<String> = self
+                .server
+                .pins
+                .iter()
+                .map(|p| URL_SAFE_NO_PAD.encode(p))
+                .collect();
+            format!("&p={}", pins.join("."))
+        };
         format!(
             "{PREFIX}v={VERSION}&s={}{pin}&id={}&ik={}&sk={}&t={}&m={m}",
             self.server.host,
@@ -146,11 +162,14 @@ impl Invite {
             Some("l") => InviteMethod::Link,
             _ => return Err(ProtoError::Invalid("invite method")),
         };
-        let pin = match pin {
-            Some(_) => Some(decode_array(pin, "invite server pin")?),
-            None => None,
+        let pins = match pin {
+            Some(list) => list
+                .split('.')
+                .map(|p| decode_array(Some(p), "invite server pin"))
+                .collect::<Result<Vec<_>, _>>()?,
+            None => Vec::new(),
         };
-        let server = ServerRef::new(srv.ok_or(ProtoError::Invalid("invite server"))?, pin)?;
+        let server = ServerRef::new(srv.ok_or(ProtoError::Invalid("invite server"))?, pins)?;
         Ok(Self {
             server,
             account_id: AccountId::from_b64(id.ok_or(ProtoError::Invalid("invite id"))?)?,
@@ -177,13 +196,13 @@ mod tests {
     use super::*;
     use proptest::prelude::*;
 
-    fn server(pin: Option<[u8; 32]>) -> ServerRef {
-        ServerRef::new("staya.example.org", pin).unwrap()
+    fn server(pins: Vec<[u8; 32]>) -> ServerRef {
+        ServerRef::new("staya.example.org", pins).unwrap()
     }
 
-    fn invite(method: InviteMethod, pin: Option<[u8; 32]>) -> Invite {
+    fn invite(method: InviteMethod, pins: Vec<[u8; 32]>) -> Invite {
         Invite {
-            server: server(pin),
+            server: server(pins),
             account_id: AccountId([1; 16]),
             ik: [2; 32],
             sk: [3; 32],
@@ -196,11 +215,12 @@ mod tests {
         #[test]
         fn roundtrip(
             id: [u8; 16], ik: [u8; 32], sk: [u8; 32], token: [u8; 16], qr: bool,
-            pin in proptest::option::of(any::<[u8; 32]>()),
+            pins in proptest::collection::vec(any::<[u8; 32]>(), 0..=2)
+                .prop_filter("distinct", |p| p.len() < 2 || p[0] != p[1]),
             host in "[a-z0-9]{1,20}(\\.[a-z0-9]{1,10}){0,3}(:[1-9][0-9]{0,3})?",
         ) {
             let inv = Invite {
-                server: ServerRef::new(&host, pin).unwrap(),
+                server: ServerRef::new(&host, pins).unwrap(),
                 account_id: AccountId(id),
                 ik,
                 sk,
@@ -220,19 +240,48 @@ mod tests {
     #[test]
     fn uri_fits_in_a_qr_code() {
         // QR в байтовом режиме с коррекцией M: версия 13 вмещает 331 байт и
-        // ещё уверенно сканируется с экрана телефона.
-        let uri = invite(InviteMethod::Qr, Some([9; 32])).to_uri();
+        // ещё уверенно сканируется с экрана телефона. С двумя отпечатками и
+        // длинным именем сервера (как у sslip.io) — ~280 байт.
+        let mut inv = invite(InviteMethod::Qr, vec![[9; 32], [8; 32]]);
+        inv.server =
+            ServerRef::new("255-255-255-255.sslip.io:8443", vec![[9; 32], [8; 32]]).unwrap();
+        let uri = inv.to_uri();
         assert!(uri.len() <= 331, "{} bytes: {uri}", uri.len());
     }
 
     #[test]
-    fn server_and_pin_are_carried() {
-        let inv = Invite::parse(&invite(InviteMethod::Link, Some([7; 32])).to_uri()).unwrap();
+    fn server_and_pins_are_carried() {
+        let inv = Invite::parse(&invite(InviteMethod::Link, vec![[7; 32]]).to_uri()).unwrap();
         assert_eq!(inv.server.host, "staya.example.org");
-        assert_eq!(inv.server.pin, Some([7; 32]));
-        let no_pin = Invite::parse(&invite(InviteMethod::Link, None).to_uri()).unwrap();
-        assert_eq!(no_pin.server.pin, None);
-        assert!(!invite(InviteMethod::Link, None).to_uri().contains("&p="));
+        assert_eq!(inv.server.pins, vec![[7; 32]]);
+        let two = invite(InviteMethod::Link, vec![[7; 32], [6; 32]]).to_uri();
+        assert!(two.contains("&p=BwcH") && two.contains(".BgYG"), "{two}");
+        assert_eq!(
+            Invite::parse(&two).unwrap().server.pins,
+            vec![[7; 32], [6; 32]]
+        );
+        let no_pin = Invite::parse(&invite(InviteMethod::Link, vec![]).to_uri()).unwrap();
+        assert!(no_pin.server.pins.is_empty());
+        assert!(!invite(InviteMethod::Link, vec![]).to_uri().contains("&p="));
+    }
+
+    #[test]
+    fn bad_pin_lists_are_rejected() {
+        let base = invite(InviteMethod::Link, vec![]).to_uri();
+        let p = URL_SAFE_NO_PAD.encode([1u8; 32]);
+        let q = URL_SAFE_NO_PAD.encode([2u8; 32]);
+        let r = URL_SAFE_NO_PAD.encode([3u8; 32]);
+        for bad in [
+            format!("{p}.{q}.{r}"),
+            format!("{p}.{p}"),
+            format!("{p}."),
+            format!(".{p}"),
+            URL_SAFE_NO_PAD.encode([1u8; 31]),
+        ] {
+            let uri = base.replace("&id=", &format!("&p={bad}&id="));
+            assert!(Invite::parse(&uri).is_err(), "{bad}");
+        }
+        assert!(ServerRef::new("a.b", vec![[1; 32]; 3]).is_err());
     }
 
     #[test]
@@ -245,10 +294,10 @@ mod tests {
             "2-27-x.sslip.io",
             "Example.ORG",
         ] {
-            assert!(ServerRef::new(ok, None).is_ok(), "{ok}");
+            assert!(ServerRef::new(ok, vec![]).is_ok(), "{ok}");
         }
         assert_eq!(
-            ServerRef::new("Example.ORG", None).unwrap().host,
+            ServerRef::new("Example.ORG", vec![]).unwrap().host,
             "example.org"
         );
         for bad in [
@@ -264,13 +313,13 @@ mod tests {
             "a/b",
             "user@host",
         ] {
-            assert!(ServerRef::new(bad, None).is_err(), "{bad}");
+            assert!(ServerRef::new(bad, vec![]).is_err(), "{bad}");
         }
     }
 
     #[test]
     fn rejects_missing_server_duplicates_and_bad_values() {
-        let uri = invite(InviteMethod::Link, None).to_uri();
+        let uri = invite(InviteMethod::Link, vec![]).to_uri();
         assert!(Invite::parse(&format!("{uri}&m=q")).is_err());
         assert!(Invite::parse(&uri.replace("v=1", "v=2")).is_err());
         assert!(Invite::parse(&uri.replace("staya://", "https://")).is_err());
@@ -280,7 +329,7 @@ mod tests {
 
     #[test]
     fn debug_hides_token() {
-        let mut inv = invite(InviteMethod::Qr, None);
+        let mut inv = invite(InviteMethod::Qr, vec![]);
         inv.token = [0xEE; 16];
         assert!(!format!("{inv:?}").contains("238"));
     }

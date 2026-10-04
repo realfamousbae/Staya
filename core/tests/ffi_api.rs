@@ -162,13 +162,13 @@ fn befriend(alice: &App, bob: &App, server: &mut JsonServer) {
 
     let uri = alice
         .core
-        .create_invite("staya.test".into(), None, InviteMethod::Qr, T0)
+        .create_invite("staya.test".into(), vec![], InviteMethod::Qr, T0)
         .unwrap();
     let info = bob.core.parse_invite(uri.clone()).unwrap();
     assert_eq!(info.account_id, alice.id);
     // Друг подключится к серверу пригласившего (protocol §5.3).
     assert_eq!(info.server, "staya.test");
-    assert_eq!(info.server_pin, None);
+    assert!(info.server_pins.is_empty());
     bob.core
         .accept_invite(uri, server.claim(&info.account_id), T0)
         .unwrap();
@@ -305,28 +305,37 @@ fn only_one_open_handle_and_only_the_right_key() {
 }
 
 #[test]
-fn invite_carries_server_and_pin() {
+fn invite_carries_server_and_pins() {
     let app = App::new();
     let uri = app
         .core
         .create_invite(
             "Self.Hosted.Example:8443".into(),
-            Some(vec![5; 32]),
+            vec![vec![5; 32], vec![6; 32]],
             InviteMethod::Link,
             T0,
         )
         .unwrap();
     let info = app.core.parse_invite(uri).unwrap();
     assert_eq!(info.server, "self.hosted.example:8443");
-    assert_eq!(info.server_pin, Some(vec![5; 32]));
+    assert_eq!(info.server_pins, vec![vec![5; 32], vec![6; 32]]);
     assert!(matches!(
-        app.core
-            .create_invite("bad host".into(), None, InviteMethod::Qr, T0),
+        app.core.create_invite(
+            "ok.example".into(),
+            vec![vec![1; 32], vec![2; 32], vec![3; 32]],
+            InviteMethod::Qr,
+            T0
+        ),
         Err(CoreError::Proto(_))
     ));
     assert!(matches!(
         app.core
-            .create_invite("ok.example".into(), Some(vec![1; 5]), InviteMethod::Qr, T0),
+            .create_invite("bad host".into(), vec![], InviteMethod::Qr, T0),
+        Err(CoreError::Proto(_))
+    ));
+    assert!(matches!(
+        app.core
+            .create_invite("ok.example".into(), vec![vec![1; 5]], InviteMethod::Qr, T0),
         Err(CoreError::Invalid(_))
     ));
 }

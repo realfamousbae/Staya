@@ -12,7 +12,7 @@ use staya_proto::invite::{Invite, InviteMethod};
 use staya_proto::location::{LocationKind, LocationPayload, snap_to_grid};
 
 fn staya_test_server() -> staya_proto::invite::ServerRef {
-    staya_proto::invite::ServerRef::new("staya.test", None).unwrap()
+    staya_proto::invite::ServerRef::new("staya.test", vec![]).unwrap()
 }
 
 const T0: i64 = 1_700_000_000;

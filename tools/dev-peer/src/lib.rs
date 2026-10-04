@@ -143,7 +143,7 @@ impl Peer {
     pub fn create_invite(&self, server: &str) -> Result<String, Error> {
         Ok(self
             .core
-            .create_invite(server.to_owned(), None, InviteMethod::Qr, now())?)
+            .create_invite(server.to_owned(), Vec::new(), InviteMethod::Qr, now())?)
     }
 
     /// Кладёт приглашение на `/dev/invite` для собеседника.

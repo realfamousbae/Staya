@@ -11,7 +11,7 @@ use staya_proto::invite::InviteMethod;
 use staya_proto::location::LocationPayload;
 
 fn staya_test_server() -> staya_proto::invite::ServerRef {
-    staya_proto::invite::ServerRef::new("staya.test", None).unwrap()
+    staya_proto::invite::ServerRef::new("staya.test", vec![]).unwrap()
 }
 
 const T0: i64 = 1_700_000_000;

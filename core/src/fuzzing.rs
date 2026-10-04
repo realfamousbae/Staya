@@ -91,7 +91,7 @@ fn befriended_pair() -> (Device, Device) {
         .create_invite(
             &alice.store,
             &alice.account.identity(),
-            &ServerRef::new("staya.test", None).expect("server"),
+            &ServerRef::new("staya.test", vec![]).expect("server"),
             InviteMethod::Qr,
             T0,
         )

@@ -66,8 +66,8 @@ pub struct IdentityInfo {
 pub struct InviteInfo {
     /// Сервер пригласившего (`host` или `host:port`): подключаться к нему (protocol §5.3).
     pub server: String,
-    /// Отпечаток ключа TLS сервера (SHA-256 SPKI), если он был в приглашении.
-    pub server_pin: Option<Vec<u8>>,
+    /// Отпечатки ключей TLS сервера (SHA-256 SPKI): пусто, один или два (§5.3).
+    pub server_pins: Vec<Vec<u8>>,
     pub account_id: String,
     pub method: InviteMethod,
 }
@@ -267,21 +267,23 @@ impl StayaCore {
     }
 
     /// Ссылка `staya://add?...` для QR или отправки другу.
-    /// `server` — сервер этого аккаунта (`host` или `host:port`), `server_pin` —
-    /// необязательный SHA-256 от SPKI его ключа TLS (protocol §5.3).
+    /// `server` — сервер этого аккаунта (`host` или `host:port`), `server_pins` —
+    /// ноль, один или два SHA-256 от SPKI его ключей TLS: основной и запасной
+    /// (protocol §5.3).
     pub fn create_invite(
         &self,
         server: String,
-        server_pin: Option<Vec<u8>>,
+        server_pins: Vec<Vec<u8>>,
         method: InviteMethod,
         now: i64,
     ) -> Result<String, CoreError> {
-        let pin = server_pin
+        let pins = server_pins
+            .iter()
             .map(|p| {
                 <[u8; 32]>::try_from(p.as_slice()).map_err(|_| CoreError::Invalid("server pin"))
             })
-            .transpose()?;
-        let server = ServerRef::new(&server, pin)?;
+            .collect::<Result<Vec<_>, _>>()?;
+        let server = ServerRef::new(&server, pins)?;
         let mut g = self.lock()?;
         let Inner {
             store,
@@ -302,7 +304,7 @@ impl StayaCore {
         };
         Ok(InviteInfo {
             server: invite.server.host.clone(),
-            server_pin: invite.server.pin.map(|p| p.to_vec()),
+            server_pins: invite.server.pins.iter().map(|p| p.to_vec()).collect(),
             account_id: invite.account_id.to_b64(),
             method,
         })
