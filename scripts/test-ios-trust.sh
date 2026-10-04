@@ -27,5 +27,6 @@ leaf other other.example
 openssl x509 -in ca.pem -outform DER -out ca.der
 
 swiftc -swift-version 6 "$ROOT/ios/Staya/Net/ServerTrustEvaluator.swift" \
+  "$ROOT/ios/Staya/Map/MapMath.swift" "$ROOT/ios/Staya/Map/MapTrust.swift" \
   "$ROOT/ios/CoreTests/Trust/sha256.swift" "$ROOT/ios/CoreTests/Trust/main.swift" -o trust-test
 ./trust-test "$TMP"

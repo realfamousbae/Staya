@@ -61,4 +61,23 @@ check(asked.isEmpty, "untrusted chain never reaches the core")
 
 check(ServerTrustEvaluator.evaluate(trust("leaf2"), host: "localhost", check: { $0 == pin("leaf") }) == .keyRejected,
       "another key for the same name is rejected")
+
+// Карта (4.4): только привязанный сервер, затем то же правило ключа.
+asked = []
+check(MapTrust.allows(trust("leaf"), host: "localhost", port: 443, boundHost: "localhost", check: accept),
+      "map: bound host with a trusted key")
+check(asked == [pin("leaf")], "map: core gets the SPKI hash")
+asked = []
+check(!MapTrust.allows(trust("leaf"), host: "localhost", port: 443, boundHost: "localhost", check: { asked.append($0); return false }),
+      "map: key rejected by the core")
+asked = []
+check(!MapTrust.allows(trust("other"), host: "other.example", port: 443, boundHost: "localhost", check: accept),
+      "map: other host refused")
+check(!MapTrust.allows(trust("leaf"), host: "localhost", port: 8443, boundHost: "localhost", check: accept),
+      "map: other port refused")
+check(!MapTrust.allows(trust("leaf"), host: "localhost", port: 443, boundHost: nil, check: accept),
+      "map: no bound server")
+check(asked.isEmpty, "map: refused hosts never reach the core")
+check(MapTrust.allows(trust("leaf"), host: "localhost", port: 8443, boundHost: "localhost:8443", check: accept),
+      "map: explicit port in the binding")
 print("Trust: all passed")

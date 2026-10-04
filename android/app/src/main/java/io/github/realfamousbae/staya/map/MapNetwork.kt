@@ -29,21 +29,7 @@ object MapNetwork {
     @Synchronized
     fun install(core: StayaCore): OkHttpClient? {
         if (installedFor === core) return client
-        val host = { runCatching { core.server()?.host }.getOrNull() }
-        val base = OkHttpClient.Builder()
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            // Тайлы грузятся параллельно (у OkHttp по умолчанию 5 на сервер — медленно).
-            .dispatcher(Dispatcher().apply { maxRequestsPerHost = 20 })
-            .addInterceptor(Interceptor { chain ->
-                val url = chain.request().url
-                if (!allowed(url, host())) throw IOException("map request outside the bound server")
-                chain.proceed(chain.request())
-            })
-            .build()
-        val pinned = base.newBuilder()
-            .hostnameVerifier(ServerKeyVerifier(base.hostnameVerifier) { core.checkServerKey(it) })
-            .build()
+        val pinned = buildClient(core)
         HttpRequestUtil.setLogEnabled(false)
         HttpRequestUtil.setPrintRequestUrlOnFailure(false)
         HttpRequestUtil.setOkHttpClient(pinned)
@@ -55,6 +41,28 @@ object MapNetwork {
 
     @Volatile
     private var client: OkHttpClient? = null
+
+    /**
+     * Клиент карты без MapLibre (проверяется JVM-тестом): только https к
+     * привязанному серверу и проверка ключа сервера до первого байта запроса.
+     */
+    internal fun buildClient(core: StayaCore, builder: OkHttpClient.Builder = OkHttpClient.Builder()): OkHttpClient {
+        val host = { runCatching { core.server()?.host }.getOrNull() }
+        val base = builder
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            // Тайлы грузятся параллельно (у OkHttp по умолчанию 5 на сервер — медленно).
+            .dispatcher(Dispatcher().apply { maxRequestsPerHost = 20 })
+            .addInterceptor(Interceptor { chain ->
+                val url = chain.request().url
+                if (!allowed(url, host())) throw IOException("map request outside the bound server")
+                chain.proceed(chain.request())
+            })
+            .build()
+        return base.newBuilder()
+            .hostnameVerifier(ServerKeyVerifier(base.hostnameVerifier) { core.checkServerKey(it) })
+            .build()
+    }
 
     /** Адрес стиля на сервере: `https://<сервер>/map/style-light.json` (или dark). */
     fun styleUrl(host: String, dark: Boolean): String =

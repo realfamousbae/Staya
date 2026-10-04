@@ -84,15 +84,11 @@ final class MapNetwork: NSObject, MLNNetworkConfigurationDelegate, @unchecked Se
               let trust = challenge.protectionSpace.serverTrust
         else { return (.performDefaultHandling, nil) }
         let space = challenge.protectionSpace
-        guard let core = lock.withLock({ self.core }),
-              let host,
-              MapMath.allowed(URL(string: "https://\(space.host):\(space.port)/"), host: host)
-        else { return (.cancelAuthenticationChallenge, nil) }
-        let tlsName = host.split(separator: ":").first.map(String.init) ?? host
-        let decision = ServerTrustEvaluator.evaluate(trust, host: tlsName) { spki in
+        guard let core = lock.withLock({ self.core }) else { return (.cancelAuthenticationChallenge, nil) }
+        let allowed = MapTrust.allows(trust, host: space.host, port: space.port, boundHost: host) { spki in
             (try? core.checkServerKey(spkiSha256: spki)).map { $0 != .rejected } ?? false
         }
-        return decision == .trusted ? (.useCredential, URLCredential(trust: trust)) : (.cancelAuthenticationChallenge, nil)
+        return allowed ? (.useCredential, URLCredential(trust: trust)) : (.cancelAuthenticationChallenge, nil)
     }
 }
 
