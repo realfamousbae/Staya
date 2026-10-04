@@ -39,26 +39,11 @@ class StayaClientTest {
     private fun pin(cert: HeldCertificate): ByteArray =
         MessageDigest.getInstance("SHA-256").digest(cert.certificate.publicKey.encoded)
 
-    /**
-     * Сервер на заданном порту: подмена ключа «на том же адресе» поднимает новый
-     * сервер сразу после закрытия старого, а порт освобождается не мгновенно
-     * (в CI бывал `BindException`) — несколько попыток.
-     */
-    private fun startServer(cert: HeldCertificate, port: Int = 0) {
-        var attempt = 0
-        while (true) {
-            server = MockWebServer()
-            server.useHttps(HandshakeCertificates.Builder().heldCertificate(cert).build().sslSocketFactory())
-            server.dispatcher = fake
-            try {
-                server.start(java.net.InetAddress.getByName("127.0.0.1"), port)
-                return
-            } catch (e: java.net.BindException) {
-                server.close()
-                if (++attempt >= 50) throw e
-                Thread.sleep(100)
-            }
-        }
+    private fun startServer(cert: HeldCertificate) {
+        server = MockWebServer()
+        server.useHttps(HandshakeCertificates.Builder().heldCertificate(cert).build().sslSocketFactory())
+        server.dispatcher = fake
+        server.start(java.net.InetAddress.getByName("127.0.0.1"), 0)
     }
 
     @Before
@@ -116,9 +101,10 @@ class StayaClientTest {
         keyCount(client(core))
         assertTrue(core.server()!!.learnedPin!!.contentEquals(pin(leaf)))
 
-        val samePort = port
+        // Другой ключ под тем же именем. Порт новый: старый в Linux может быть занят
+        // ещё минуту, а привязка ядра (и запомненный ключ) от порта клиента не зависит.
         server.close()
-        startServer(otherLeaf, samePort)
+        startServer(otherLeaf)
         expect<ServerKeyRejectedException> { keyCount(client(core)) }
         assertEquals(0, server.requestCount)
         assertTrue("learned key is never replaced", core.server()!!.learnedPin!!.contentEquals(pin(leaf)))
@@ -147,9 +133,10 @@ class StayaClientTest {
         val core = core(emptyList())
         keyCount(client(core)) // вход и запоминание ключа
 
-        val samePort = port
+        // Другой ключ под тем же именем. Порт новый: старый в Linux может быть занят
+        // ещё минуту, а привязка ядра (и запомненный ключ) от порта клиента не зависит.
         server.close()
-        startServer(otherLeaf, samePort)
+        startServer(otherLeaf)
         val failed = java.util.concurrent.CountDownLatch(1)
         var error: Throwable? = null
         client(core).openWebSocket(object : okhttp3.WebSocketListener() {
