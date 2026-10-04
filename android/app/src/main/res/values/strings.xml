@@ -1,7 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Staya</string>
-    <string name="probe_channel">Замер геолокации</string>
-    <string name="probe_notification_title">Staya · замер</string>
-    <string name="probe_notification_text">Стратегия %1$s</string>
 </resources>

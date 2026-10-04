@@ -1268,18 +1268,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "probe-server"
-version = "0.1.0"
-dependencies = [
- "axum",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "tower",
-]
-
-[[package]]
 name = "proc-macro-crate"
 version = "3.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

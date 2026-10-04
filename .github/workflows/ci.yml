@@ -75,8 +75,6 @@ jobs:
           swiftc -I ios/StayaCore/Generated/headers ios/StayaCore/Sources/StayaCore/staya_core.swift \
             "$RUNNER_TEMP/main.swift" -L target/debug -lstaya_core -o "$RUNNER_TEMP/swifttest"
           "$RUNNER_TEMP/swifttest"
-      - name: iOS probe tests (queue, contract with probe-server)
-        run: scripts/test-ios-probe.sh
       - name: Database key rules (macOS host)
         run: |
           swiftc -swift-version 6 ios/Staya/Core/DbKey.swift ios/CoreTests/DbKey/main.swift -o "$RUNNER_TEMP/dbkey"
@@ -143,8 +141,6 @@ jobs:
       - name: Build, lint, unit tests
         working-directory: android
         run: ./gradlew --no-daemon assembleDebug lintDebug testDebugUnitTest
-      - name: Android probe contract with probe-server
-        run: scripts/test-android-probe.sh
 
   # Keystore и ядро на настоящем Android (эмулятор x86_64; arm64-ядро идёт через
   # трансляцию ARM, которая есть в образах API 30+).

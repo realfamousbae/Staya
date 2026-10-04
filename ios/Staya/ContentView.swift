@@ -2,29 +2,16 @@ import StayaCore
 import SwiftUI
 
 /// Корень приложения: ядро открывается лениво, затем онбординг или главный экран.
-/// В сборке прототипа замеров (STAYA_PROBE) экран замеров доступен кнопкой — замеры
-/// этапа 1 не зависят от аккаунта.
 struct ContentView: View {
     @State private var core = AppCore.shared
     @State private var app = AppModel.shared
-    @State private var showProbe = false
     @State private var friends = FriendsModel.shared
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         NavigationStack {
             content
-                .toolbar {
-                    #if STAYA_PROBE
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button("Замеры") { showProbe = true }
-                    }
-                    #endif
-                }
         }
-        #if STAYA_PROBE
-        .sheet(isPresented: $showProbe) { ProbeDebugView() }
-        #endif
         .task { core.open() }
         // Ссылки staya://… из других приложений: только в поле онбординга или на подтверждение.
         .onOpenURL { url in app.pendingLink = DeepLink.parse(url.absoluteString) }

@@ -6,7 +6,6 @@ on:
   push:
     branches: [main]
     paths:
-      - 'tools/probe-server/**'
       - 'server/**'
       - 'proto/**'
       - 'Cargo.toml'
@@ -14,7 +13,6 @@ on:
       - '.github/workflows/images.yml'
   pull_request:
     paths:
-      - 'tools/probe-server/**'
       - 'server/**'
       - 'proto/**'
       - '.github/workflows/images.yml'
@@ -28,31 +26,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  probe:
-    name: probe-server image
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      packages: write
-    env:
-      IMAGE: ghcr.io/realfamousbae/staya-probe
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Build
-        run: docker build -f tools/probe-server/Dockerfile -t "$IMAGE:main" -t "$IMAGE:${GITHUB_SHA::12}" .
-      # На PR только собираем; публикуем образ только из main.
-      - name: Push
-        if: github.event_name != 'pull_request'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          echo "$GH_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-          docker push "$IMAGE:main"
-          docker push "$IMAGE:${GITHUB_SHA::12}"
-          docker logout ghcr.io
-
   server:
     name: server image
     runs-on: ubuntu-24.04

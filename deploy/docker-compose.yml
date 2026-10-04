@@ -26,21 +26,6 @@ services:
       - caddy_data:/data
       - caddy_config:/config
 
-  probe:
-    image: ghcr.io/realfamousbae/staya-probe:${PROBE_TAG:-main}
-    restart: unless-stopped
-    # PROBE_TOKEN — только здесь, файл создаётся на сервере (права 600), не в git.
-    env_file: ./probe.env
-    # Только loopback: Docker обходит ufw для опубликованных портов,
-    # поэтому наружу смотрит только Caddy.
-    ports:
-      - "127.0.0.1:8081:8080"
-    volumes:
-      - ./probe-data:/data
-    read_only: true
-    cap_drop: [ALL]
-    security_opt: ["no-new-privileges:true"]
-
   # База сервера: только во внутренней сети, наружу и на хост не публикуется.
   postgres:
     # 18-alpine на 04.10.2026

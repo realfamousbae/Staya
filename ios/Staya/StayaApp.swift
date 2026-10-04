@@ -20,10 +20,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         #if DEBUG
         SelfTest.runIfRequested()
         #endif
-        #if STAYA_PROBE
-        // Здесь, а не в экране: при фоновом перезапуске по SLC/визиту сцены нет.
-        LocationEngine.shared.start(launchedForLocation: launchOptions?[.location] != nil)
-        #endif
+        LegacyCleanup.run()
         return true
     }
 }

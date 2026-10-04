@@ -89,18 +89,9 @@ install -d -m 750 -o "$DEPLOY_USER" -g "$DEPLOY_USER" "$APP_DIR" "$APP_DIR/www"
 # Карта (deploy/update-map.sh пишет сюда от имени staya). Создаём заранее: иначе
 # Docker при первом запуске создал бы точки монтирования от root.
 install -d -m 755 -o "$DEPLOY_USER" -g "$DEPLOY_USER" "$APP_DIR/map" "$APP_DIR/map/tiles" "$APP_DIR/map/www"
-# Сборщик метрик работает в distroless как nonroot (uid 65532).
-install -d -m 700 -o 65532 -g 65532 "$APP_DIR/probe-data"
 if [ ! -f "$APP_DIR/www/mtu-64k.bin" ]; then
   head -c 65536 /dev/zero > "$APP_DIR/www/mtu-64k.bin"
 fi
-# Токен сборщика: генерируется здесь и не покидает сервер (смотреть: sudo cat).
-if [ ! -f "$APP_DIR/probe.env" ]; then
-  umask 077
-  printf 'PROBE_TOKEN=%s\n' "$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')" > "$APP_DIR/probe.env"
-fi
-chown "$DEPLOY_USER:$DEPLOY_USER" "$APP_DIR/probe.env"
-chmod 600 "$APP_DIR/probe.env"
 
 # Сервер Staya: пароль базы и код приглашения на регистрацию генерируются здесь
 # и не покидают сервер. Код раздаётся друзьям лично (смотреть: sudo cat).
