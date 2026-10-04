@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Только отладочная сборка: HTTP без TLS к dev-серверу на хосте эмулятора (задача 2.10).
+     Релизный APK не разрешает открытый HTTP никуда. -->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">10.0.2.2</domain>
+    </domain-config>
+</network-security-config>

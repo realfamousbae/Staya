@@ -73,9 +73,14 @@ jobs:
             -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO build | tail -n 20
           test "${PIPESTATUS[0]}" -eq 0
-      - name: Simulator self-test (Keychain, core)
-        timeout-minutes: 20
+      - name: Simulator self-test (Keychain, core, exchange with dev-peer)
+        timeout-minutes: 30
+        env:
+          STAYA_LOG_DIR: ${{ runner.temp }}/staya-logs
         run: scripts/test-ios-simulator.sh
+      - name: Dev server and peer logs
+        if: failure()
+        run: cat "$RUNNER_TEMP"/staya-logs/*.log || true
 
   android:
     name: Android
@@ -136,12 +141,25 @@ jobs:
       - name: Build app and test APKs
         working-directory: android
         run: ./gradlew --no-daemon assembleDebug assembleDebugAndroidTest
+      - name: Build dev server and peer
+        run: cargo build -p staya-server --features dev --bin staya-dev-server && cargo build -p dev-peer
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Device tests (Keystore, core)
+      # Dev-сервер и собеседник на хосте; эмулятор видит хост как 10.0.2.2.
+      # Координаты должны совпадать с DevExchangeTest.kt.
+      - name: Start dev server and peer
+        run: |
+          mkdir -p "$RUNNER_TEMP/staya-logs"
+          nohup target/debug/staya-dev-server > "$RUNNER_TEMP/staya-logs/dev-server.log" 2>&1 &
+          for _ in $(seq 1 50); do curl -s -o /dev/null http://127.0.0.1:8787/dev/invite && break; sleep 0.2; done
+          nohup target/debug/dev-peer --server http://127.0.0.1:8787 --role invite \
+            --mine 557558000,376173000 --expect 599386000,303141000 --timeout 1500 \
+            > "$RUNNER_TEMP/staya-logs/dev-peer.log" 2>&1 &
+      - name: Device tests (Keystore, core, exchange with dev-peer)
+        timeout-minutes: 30
         uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: 34
@@ -149,4 +167,12 @@ jobs:
           arch: x86_64
           disable-animations: true
           working-directory: android
-          script: ./gradlew --no-daemon connectedDebugAndroidTest
+          script: ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.devServer=http://10.0.2.2:8787
+      - name: Peer got the app's location
+        timeout-minutes: 2
+        run: |
+          for _ in $(seq 1 60); do grep -q "PEER GOT LOCATION" "$RUNNER_TEMP/staya-logs/dev-peer.log" && exit 0; sleep 1; done
+          exit 1
+      - name: Dev server and peer logs
+        if: failure()
+        run: cat "$RUNNER_TEMP"/staya-logs/*.log || true
