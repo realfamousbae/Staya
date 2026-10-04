@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Staya</string>
+    <string name="location_channel">Передача позиции</string>
+    <string name="location_notification_title">Staya делится позицией</string>
+    <string name="location_notification_text">Друзья видят, где ты. Выключить — в приложении.</string>
 </resources>

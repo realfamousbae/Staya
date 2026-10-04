@@ -45,6 +45,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
+import io.github.realfamousbae.staya.location.SharingCard
 import io.github.realfamousbae.staya.map.FriendsMap
 import io.github.realfamousbae.staya.map.MapFocus
 import io.github.realfamousbae.staya.map.locationStatus
@@ -99,6 +100,8 @@ private fun FriendsHome(core: StayaCore, nick: String, server: String) {
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Message()
+                SharingCard(core)
+                HorizontalDivider()
                 Text("Друзья", style = MaterialTheme.typography.titleMedium)
                 if (FriendsModel.friends.isEmpty()) {
                     Text("Пока никого. Покажи QR-код другу рядом или отправь ссылку.", style = MaterialTheme.typography.bodyMedium)

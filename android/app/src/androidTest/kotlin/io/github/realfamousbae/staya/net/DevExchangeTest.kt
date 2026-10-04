@@ -2,13 +2,14 @@ package io.github.realfamousbae.staya.net
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import io.github.realfamousbae.staya.location.Fix
+import io.github.realfamousbae.staya.location.LocationSender
 import java.io.File
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import uniffi.staya_core.CoreEvent
-import uniffi.staya_core.Location
 import uniffi.staya_core.StayaCore
 
 /**
@@ -38,6 +39,8 @@ class DevExchangeTest {
             sync.publishKeys()
             sync.accept(invite)
 
+            // Тот же путь, что у сервиса геопозиции (4.5): замер → ядро → сервер.
+            val sender = LocationSender()
             val deadline = System.currentTimeMillis() + TIMEOUT_MS
             var got = false
             var gotAt = 0L
@@ -52,7 +55,7 @@ class DevExchangeTest {
                     }
                 }
                 if (core.listFriends().any { it.active }) {
-                    sync.share(Location(MY_LAT, MY_LON, 10u.toUShort(), System.currentTimeMillis() / 1000))
+                    sender.onFix(core, sync, Fix(MY_LAT / 1e7, MY_LON / 1e7, 10f, System.currentTimeMillis()))
                 }
                 Thread.sleep(1000)
             }

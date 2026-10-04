@@ -19,6 +19,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import io.github.realfamousbae.staya.location.LocationShare
 import io.github.realfamousbae.staya.ui.AppModel
 import io.github.realfamousbae.staya.ui.DeepLink
 import io.github.realfamousbae.staya.ui.FriendsModel
@@ -53,6 +54,8 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         AppCore.openAsync(this)
         AppModel.foreground = true
+        // Сервис мог быть остановлен системой: поднять снова, если передача включена.
+        LocationShare.startService(this, fromBackground = false)
     }
 
     override fun onPause() {

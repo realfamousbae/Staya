@@ -37,6 +37,21 @@ object AppCore {
         executor.execute { if (state !is State.Open) state = guarded { open(app) } }
     }
 
+    /**
+     * Для фоновой работы без экрана (сервис геопозиции): открыть и дождаться.
+     * Недоступная или испорченная база — `null`, никакого сброса: его делает только
+     * пользователь. Не вызывать из главного потока.
+     */
+    fun openBlocking(context: Context): StayaCore? {
+        (state as? State.Open)?.let { return it.core }
+        val app = context.applicationContext
+        val result = executor.submit<State> {
+            if (state !is State.Open) state = guarded { open(app) }
+            state
+        }.get()
+        return (result as? State.Open)?.core
+    }
+
     /** Удаляет базу и ключ и создаёт аккаунт заново. Друзей придётся добавить снова. */
     fun resetAsync(context: Context) {
         val app = context.applicationContext

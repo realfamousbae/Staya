@@ -5,8 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import io.github.realfamousbae.staya.net.CoreSync
 import io.github.realfamousbae.staya.net.LiveConnection
-import io.github.realfamousbae.staya.net.StayaClient
-import java.util.concurrent.Executors
+import io.github.realfamousbae.staya.net.Net
 import uniffi.staya_core.FriendView
 import uniffi.staya_core.InviteInfo
 import uniffi.staya_core.InviteMethod
@@ -15,7 +14,8 @@ import uniffi.staya_core.StayaCore
 /**
  * Друзья (задача 4.3): приглашения, принятие после подтверждения, код
  * безопасности, живая синхронизация на экране. Вся сеть и работа с ядром — в
- * одном потоке [worker] (общий с [LiveConnection]): отправки ядра идут по очереди.
+ * общем потоке [Net.worker] (с [LiveConnection] и фоновой отправкой позиции):
+ * отправки ядра идут по очереди.
  */
 object FriendsModel {
     sealed interface Screen {
@@ -27,7 +27,7 @@ object FriendsModel {
         data class Safety(val friend: FriendView, val code: String) : Screen
     }
 
-    private val worker = Executors.newSingleThreadScheduledExecutor()
+    private val worker = Net.worker
     private var core: StayaCore? = null
     private var sync: CoreSync? = null
     private var live: LiveConnection? = null
@@ -45,12 +45,12 @@ object FriendsModel {
             if (this.core !== core) {
                 live?.stop()
                 this.core = core
-                val client = runCatching { StayaClient(core) }.getOrElse {
-                    message = AppModel.describeError(it as Exception)
+                val (client, s) = Net.bind(core) ?: run {
+                    message = "Нет привязки к серверу."
                     return@execute
                 }
-                sync = CoreSync(core, client)
-                live = LiveConnection(client, sync!!, { reload() }, { message = AppModel.describeError(it) }, worker)
+                sync = s
+                live = LiveConnection(client, s, { reload() }, { message = AppModel.describeError(it) }, worker)
             }
             reload()
             // Пополнить одноразовые ключи (их разбирают при добавлении) и повернуть fallback.

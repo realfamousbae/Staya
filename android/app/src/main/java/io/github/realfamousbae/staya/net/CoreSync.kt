@@ -1,7 +1,6 @@
 package io.github.realfamousbae.staya.net
 
 import uniffi.staya_core.CoreEvent
-import uniffi.staya_core.Location
 import uniffi.staya_core.StayaCore
 
 /**
@@ -55,11 +54,6 @@ class CoreSync(private val core: StayaCore, private val http: StayaClient) {
         processed.ackJson?.let { http.post("/v1/mailbox/ack", it) }
         flush()
         return processed.events
-    }
-
-    fun share(location: Location) {
-        core.prepareLocationUpdate(location, now())
-        flush()
     }
 
     private companion object {

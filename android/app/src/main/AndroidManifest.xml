@@ -46,6 +46,22 @@
                 <data android:host="server" />
             </intent-filter>
         </activity>
+
+        <!-- Передача позиции (4.5): тот же процесс, что и экран — ядро одно на процесс. -->
+        <service
+            android:name=".location.LocationService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
+
+        <!-- Системные защищённые broadcast: прислать их может только система. -->
+        <receiver
+            android:name=".location.BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>
