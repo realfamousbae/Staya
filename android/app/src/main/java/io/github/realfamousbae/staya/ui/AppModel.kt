@@ -5,11 +5,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import io.github.realfamousbae.staya.net.CoreSync
 import io.github.realfamousbae.staya.net.InviteCodeRequiredException
+import io.github.realfamousbae.staya.net.Net
 import io.github.realfamousbae.staya.net.RateLimitedException
 import io.github.realfamousbae.staya.net.ServerKeyRejectedException
 import io.github.realfamousbae.staya.net.StayaClient
 import java.io.IOException
-import java.util.concurrent.Executors
 import uniffi.staya_core.CoreException
 import uniffi.staya_core.StayaCore
 
@@ -24,7 +24,8 @@ object AppModel {
         data class Ready(val nick: String, val server: String, val accountId: String) : Phase
     }
 
-    private val worker = Executors.newSingleThreadExecutor()
+    /** Общий поток сети ([Net.worker]): онбординг меняет привязку и исходящую очередь ядра. */
+    private val worker = Net.worker
 
     var phase by mutableStateOf<Phase>(Phase.Loading)
         private set

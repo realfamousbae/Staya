@@ -49,29 +49,32 @@ final class AppModel {
         let host = manualHost.trimmingCharacters(in: .whitespacesAndNewlines)
         let code = inviteCode.trimmingCharacters(in: .whitespacesAndNewlines)
         let nick = nick.trimmingCharacters(in: .whitespacesAndNewlines)
+        let queue = StayaNet.shared.queue
         Task.detached {
-            let message: String?
-            do {
-                if !link.isEmpty {
-                    _ = try core.setServerFromLink(uri: link)
-                } else if !host.isEmpty {
-                    _ = try core.setServer(host: host, pins: [])
-                } else {
-                    throw OnboardingError.noServer
+            // Через общую очередь сети: онбординг меняет привязку и исходящую очередь ядра.
+            let message: String? = (try? await queue.run { () async -> String? in
+                do {
+                    if !link.isEmpty {
+                        _ = try core.setServerFromLink(uri: link)
+                    } else if !host.isEmpty {
+                        _ = try core.setServer(host: host, pins: [])
+                    } else {
+                        throw OnboardingError.noServer
+                    }
+                    try core.setProfile(nick: nick, avatar: avatar ?? Data())
+                    let client = try StayaClient(core: core, inviteCode: { code.isEmpty ? nil : code })
+                    let sync = CoreSync(core: core, http: client)
+                    try await sync.publishKeys()
+                    if link.hasPrefix("staya://add?") {
+                        try await sync.accept(link)
+                    }
+                    return nil
+                } catch {
+                    // Пока друзей нет, неверный адрес можно исправить и попробовать снова.
+                    try? core.resetServer()
+                    return Self.describe(error)
                 }
-                try core.setProfile(nick: nick, avatar: avatar ?? Data())
-                let client = try StayaClient(core: core, inviteCode: { code.isEmpty ? nil : code })
-                let sync = CoreSync(core: core, http: client)
-                try await sync.publishKeys()
-                if link.hasPrefix("staya://add?") {
-                    try await sync.accept(link)
-                }
-                message = nil
-            } catch {
-                message = Self.describe(error)
-                // Пока друзей нет, неверный адрес можно исправить и попробовать снова.
-                try? core.resetServer()
-            }
+            }) ?? nil
             await MainActor.run {
                 self.busy = false
                 self.error = message
