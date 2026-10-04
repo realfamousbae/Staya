@@ -10,16 +10,26 @@ publish.workspace = true
 # Dev-сервер (задача 2.10): ящики в памяти, без входа — отправитель берётся из
 # `Authorization: Bearer <account_id>`. Только за фичей, чтобы обычная сборка
 # не могла случайно запуститься без аутентификации.
-dev = ["dep:axum", "dep:tokio"]
+dev = []
 
 [dependencies]
 staya-proto = { path = "../proto" }
 serde = { workspace = true }
-axum = { workspace = true, optional = true }
-tokio = { workspace = true, optional = true }
+axum = { workspace = true, features = ["matched-path"] }
+tokio = { workspace = true }
+tokio-postgres = { workspace = true }
+deadpool-postgres = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }
+tower = { workspace = true }
+getrandom = { workspace = true }
+
+[[bin]]
+name = "staya-server"
+path = "src/main.rs"
 
 [[bin]]
 name = "staya-dev-server"

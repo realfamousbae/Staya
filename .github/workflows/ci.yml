@@ -22,6 +22,20 @@ jobs:
   rust:
     name: Rust
     runs-on: ubuntu-24.04
+    # Тесты сервера с настоящей базой (server/tests): та же основная версия, что в деплое.
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: staya
+          POSTGRES_PASSWORD: staya
+          POSTGRES_DB: staya
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U staya" --health-interval 2s --health-timeout 5s --health-retries 30
+    env:
+      STAYA_TEST_DATABASE_URL: postgres://staya:staya@127.0.0.1:5432/staya
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

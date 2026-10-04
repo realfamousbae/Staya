@@ -36,5 +36,6 @@
 
 ## Проверки перед коммитом
 - cargo fmt --check, cargo clippy --all-targets -- -D warnings, cargo test, cargo deny check
+- Тесты сервера с базой: `docker run -d --rm --name staya-pg -e POSTGRES_USER=staya -e POSTGRES_PASSWORD=staya -e POSTGRES_DB=staya -p 127.0.0.1:54329:5432 --tmpfs /var/lib/postgresql postgres:18-alpine`, затем `STAYA_TEST_DATABASE_URL=postgres://staya:staya@127.0.0.1:54329/staya cargo test -p staya-server`; без переменной тесты с базой пропускаются (в CI — падают)
 - Android: `./gradlew assembleDebug lintDebug testDebugUnitTest` (lint — 0 замечаний)
 - CI (.github/workflows/ci.yml): новые Actions закреплять по SHA коммита с комментарием версии

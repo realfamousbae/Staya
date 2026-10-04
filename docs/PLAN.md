@@ -77,7 +77,7 @@ Staya — открытое мобильное приложение для iOS и
 | iOS | Swift, SwiftUI, CoreLocation, MapLibre Native; iOS 18+ | Полный контроль над фоновым режимом и Keychain |
 | Android | Kotlin, Jetpack Compose, foreground service, LocationManager, MapLibre; minSdk 29, compileSdk/targetSdk 37 | Без Google Play Services |
 | Общее ядро | Rust + UniFFI: vodozemac, протокол, локальное хранилище (rusqlite) | Одна реализация шифрования для двух платформ |
-| Сервер | Rust (axum), WebSocket, PostgreSQL (sqlx) | Тот же язык, что у ядра, минимум компонентов |
+| Сервер | Rust (axum), WebSocket, PostgreSQL (tokio-postgres) | Тот же язык, что у ядра, минимум компонентов |
 | Карты | OpenStreetMap, вырезка PMTiles города/области, `go-pmtiles serve` за Caddy | Запросы тайлов не раскрывают район третьей стороне |
 | Пуши | В MVP нет. Позже APNs (нужен Apple Developer Program), на Android — UnifiedPush или FCM | Отправку на iOS будит CoreLocation, на Android — foreground service |
 | Инфраструктура | VPS Play2Go (Германия), Docker Compose, Caddy, домен или deSEC | Дёшево, свой TLS и pinning; переезд тривиален |
@@ -88,7 +88,7 @@ Staya — открытое мобильное приложение для iOS и
 proto/        staya-proto: форматы конвертов, API-типы, константы размеров (без криптографии)
 core/         staya-core: vodozemac, протокол, хранилище, UniFFI
 core/fuzz/    cargo-fuzz
-server/       staya-server: axum, sqlx, WebSocket
+server/       staya-server: axum, tokio-postgres, WebSocket
 tools/        probe-server (метрики этапа 1), uniffi-bindgen
 ios/          Xcode-проект + Swift Package StayaCore (XCFramework)
 android/      Gradle: :app, :core (jniLibs + Kotlin-привязки)
@@ -173,7 +173,7 @@ MVP — это минимум, при котором Staya уже можно п�
 
 ### Этап 3. Сервер
 
-- [ ] 3.1 Postgres, миграции sqlx, логирование без IP и содержимого
+- [x] 3.1 PostgreSQL 18 через `tokio-postgres` + `deadpool-postgres` (sqlx 0.9 несовместим с rusqlite ядра: обе тянут нативный SQLite, а в workspace может быть только одна копия); миграции вшиты в бинарник, применяются одной транзакцией под advisory-блокировкой, новее своей схемы сервер не стартует; журнал запросов только с шаблоном маршрута, без IP, ID, заголовков и тел (тест); `/health`; остановка по SIGTERM; настройки из окружения. Тесты с отдельной базой на тест (локально Postgres в Docker, в CI — сервис-контейнер; в CI без базы тесты падают, а не пропускаются). Заметки к деплою — docs/server.md
 - [ ] 3.2 Регистрация (идемпотентная, с кодом приглашения для беты), challenge-подпись → токен
 - [ ] 3.3 Каталог одноразовых и fallback-ключей
 - [ ] 3.4 Ящики: слоты позиций, очередь управляющих сообщений + ack, удаление слота, TTL, лимиты

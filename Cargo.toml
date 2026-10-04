@@ -26,6 +26,10 @@ axum = { version = "0.8.9", default-features = false, features = ["http1", "json
 tokio = { version = "1.53.2", features = ["rt-multi-thread", "macros", "net", "fs", "io-util", "signal", "sync"] }
 tower = { version = "0.5.3", features = ["util"] }
 sha2 = "0.11.0"
+tokio-postgres = { version = "0.7.18", default-features = false, features = ["runtime"] }
+deadpool-postgres = { version = "0.14.2", default-features = false, features = ["rt_tokio_1"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", default-features = false, features = ["fmt", "ansi", "std"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
