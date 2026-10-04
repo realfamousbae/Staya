@@ -13,7 +13,8 @@ final class FriendsModel {
         case shareLink(String)
         case scan
         case confirm(uri: String, info: InviteInfo)
-        case safety(FriendView, code: String)
+        /// Карточка друга: точность, код безопасности, удаление (4.6).
+        case friend(FriendView, code: String)
 
         var id: String {
             switch self {
@@ -21,7 +22,7 @@ final class FriendsModel {
             case .shareLink(let u): "link" + u
             case .scan: "scan"
             case .confirm(let u, _): "confirm" + u
-            case .safety(let f, _): "safety" + f.accountId
+            case .friend(let f, _): "friend" + f.accountId
             }
         }
     }
@@ -46,7 +47,15 @@ final class FriendsModel {
             self.sync = sync
             live = LiveConnection(
                 client: client, sync: sync, queue: queue,
-                onEvents: { _ in Task { @MainActor in FriendsModel.shared.reload() } },
+                onEvents: { events in
+                    Task { @MainActor in
+                        FriendsModel.shared.reload()
+                        // Новому другу — сразу последний замер: иначе в покое он ждал бы часами.
+                        if events.contains(where: { if case .friendAdded = $0 { true } else { false } }) {
+                            await LocationEngine.resend(core: core)
+                        }
+                    }
+                },
                 onError: { error in Task { @MainActor in FriendsModel.shared.message = AppModel.describe(error) } }
             )
         }
@@ -115,10 +124,10 @@ final class FriendsModel {
         }
     }
 
-    func showSafety(_ friend: FriendView) {
+    func showFriend(_ friend: FriendView) {
         guard let core else { return }
         do {
-            screen = .safety(friend, code: try core.safetyCode(friend: friend.accountId))
+            screen = .friend(friend, code: try core.safetyCode(friend: friend.accountId))
         } catch {
             message = AppModel.describe(error)
         }
@@ -128,5 +137,38 @@ final class FriendsModel {
         do { try core?.markVerified(friend: friend.accountId) } catch { message = AppModel.describe(error) }
         reload()
         screen = nil
+    }
+
+    /// Точность для друга — сразу, из последнего замера (не ждём следующего).
+    func setPrecision(_ friend: FriendView, _ precision: Precision) {
+        guard let core else { return }
+        Task {
+            do {
+                try await queue.run { try core.setPrecision(friend: friend.accountId, precision: precision) }
+            } catch {
+                message = AppModel.describe(error)
+                return
+            }
+            reload()
+            await LocationEngine.resend(core: core)
+        }
+    }
+
+    /// Удаление: сессии уничтожаются, слот в его ящике удаляется, другу — уведомление.
+    func remove(_ friend: FriendView) {
+        guard let core else { return }
+        let sync = self.sync
+        Task {
+            do {
+                try await queue.run {
+                    try core.removeFriend(friend: friend.accountId, notify: true)
+                    try? await sync?.flush()
+                }
+            } catch {
+                message = AppModel.describe(error)
+            }
+            screen = nil
+            reload()
+        }
     }
 }

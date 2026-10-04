@@ -8,6 +8,8 @@ import UIKit
 struct SharingSection: View {
     let core: StayaCore
     @State private var engine = LocationEngine.shared
+    @State private var frozen = false
+    @State private var freezeError = false
 
     var body: some View {
         Section {
@@ -23,6 +25,25 @@ struct SharingSection: View {
                 }
             }
             if engine.enabled {
+                Toggle(isOn: Binding(
+                    get: { frozen },
+                    set: { on in
+                        Task {
+                            let ok = await engine.setFrozen(on, core: core)
+                            freezeError = on && !ok
+                            if ok { frozen = on }
+                        }
+                    }
+                )) {
+                    VStack(alignment: .leading) {
+                        Text("Заморозить позицию здесь")
+                        Text(freezeError
+                             ? "Пока нет ни одного замера — подожди, пока позиция определится."
+                             : frozen ? "Друзья видят эту точку, куда бы ты ни пошёл(а)" : "Друзья увидят последнюю точку, пока не снимешь")
+                            .font(.footnote)
+                            .foregroundStyle(freezeError ? .red : .secondary)
+                    }
+                }
                 switch engine.authorization {
                 case .authorizedAlways:
                     EmptyView()
@@ -41,6 +62,7 @@ struct SharingSection: View {
                 }
             }
         }
+        .task { frozen = engine.isFrozen(core: core) }
     }
 
     private var settingsButton: some View {

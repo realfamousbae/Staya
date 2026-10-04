@@ -53,7 +53,10 @@ final class LocationEngine: NSObject {
         throttle.reset()
         requestAuthorization()
         requestMotionPermission()
-        Task { try? await StayaNet.shared.queue.run { try core.setGhost(ghost: false) } }
+        Task {
+            _ = try? await StayaNet.shared.queue.run { try core.setGhost(ghost: false) }
+            await Self.resend(core: core)
+        }
         applyServices()
     }
 
@@ -78,6 +81,31 @@ final class LocationEngine: NSObject {
         case .authorizedWhenInUse: manager.requestAlwaysAuthorization()
         default: break
         }
+    }
+
+    /// Пакеты всем друзьям из последнего замера (смена режима или точности, 4.6).
+    /// Замера ещё не было — отправлять нечего, это не ошибка.
+    static func resend(core: StayaCore) async {
+        let sync = StayaNet.shared.bind(core)?.sync
+        _ = try? await StayaNet.shared.queue.run {
+            try core.prepareLocationUpdate(location: nil, now: Int64(Date().timeIntervalSince1970))
+            try? await sync?.flush()
+        }
+    }
+
+    /// «Заморозить здесь»: друзья видят последнюю точку, пока заморозку не снимут.
+    /// `false` — замера ещё не было.
+    func setFrozen(_ frozen: Bool, core: StayaCore) async -> Bool {
+        let ok = (try? await StayaNet.shared.queue.run {
+            if frozen { try core.freezeHere() } else { try core.setFrozen(frozen: nil) }
+            return true
+        }) ?? false
+        if ok { await Self.resend(core: core) }
+        return ok
+    }
+
+    func isFrozen(core: StayaCore) -> Bool {
+        (try? core.sharing().frozen) != nil
     }
 
     // MARK: Службы

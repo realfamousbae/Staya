@@ -55,9 +55,7 @@ struct HomeView: View {
                             .buttonStyle(.borderless)
                             .foregroundStyle(.primary)
                         Spacer()
-                        if friend.active {
-                            Button("Код") { model.showSafety(friend) }.buttonStyle(.borderless)
-                        }
+                        Button("Ещё") { model.showFriend(friend) }.buttonStyle(.borderless)
                     }
                 }
             }
@@ -153,18 +151,60 @@ private struct FriendsSheet: View {
                 Button("Добавить") { model.accept(uri) }.disabled(model.busy)
             }
             .navigationTitle("Добавить друга?")
-        case .safety(let friend, let code):
-            Form {
+        case .friend(let friend, let code):
+            FriendCard(initial: friend, code: code)
+        }
+    }
+}
+
+/// Карточка друга (4.6): что он видит, код безопасности, удаление.
+private struct FriendCard: View {
+    let initial: FriendView
+    let code: String
+    @State private var model = FriendsModel.shared
+    @State private var confirmRemove = false
+
+    /// Свежая версия из списка: точность и статус меняются, пока карточка открыта.
+    private var friend: FriendView {
+        model.friends.first { $0.accountId == initial.accountId } ?? initial
+    }
+
+    var body: some View {
+        Form {
+            if let message = model.message { Text(message).foregroundStyle(.red) }
+            if friend.active {
+                Section("Что видит этот друг") {
+                    Picker("Точность", selection: Binding(
+                        get: { friend.precision },
+                        set: { model.setPrecision(friend, $0) }
+                    )) {
+                        Text("Точную позицию").tag(Precision.exact)
+                        Text("Примерно (район ~1 км)").tag(Precision.approx)
+                        Text("Ничего — «скрыл(а) позицию»").tag(Precision.hidden)
+                    }
+                    .pickerStyle(.inline)
+                    .labelsHidden()
+                }
+            }
+            Section("Код безопасности") {
                 Text(code).font(.title3.monospaced())
                 Text("Сравните код при встрече или голосом. Совпадает — значит, между вами никого нет. Если код другой — не нажимай «Совпадает» и удали этого друга.")
                     .font(.footnote)
                 if friend.verified {
                     Text("Уже проверен.").foregroundStyle(.green)
-                } else {
+                } else if friend.active {
                     Button("Совпадает") { model.markVerified(friend) }
                 }
             }
-            .navigationTitle(friend.nick ?? "Код безопасности")
+            Section {
+                Button("Удалить друга", role: .destructive) { confirmRemove = true }
+            }
+        }
+        .navigationTitle(friend.nick ?? "Друг")
+        .confirmationDialog("Удалить \(friend.nick ?? "друга")?", isPresented: $confirmRemove, titleVisibility: .visible) {
+            Button("Удалить", role: .destructive) { model.remove(friend) }
+        } message: {
+            Text("Он сразу перестанет видеть твою позицию, а ты — его. Чтобы снова дружить, придётся добавить друг друга заново.")
         }
     }
 }
