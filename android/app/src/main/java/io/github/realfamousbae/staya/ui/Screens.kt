@@ -46,6 +46,13 @@ import uniffi.staya_core.StayaCore
 fun OnboardingScreen(core: StayaCore, accountId: String) {
     val context = LocalContext.current
     var link by remember { mutableStateOf("") }
+    // Ссылка, открытая извне до создания аккаунта, — в поле (без автоматического принятия).
+    androidx.compose.runtime.LaunchedEffect(AppModel.pendingLink) {
+        AppModel.pendingLink?.let {
+            link = it.uri
+            AppModel.pendingLink = null
+        }
+    }
     var host by remember { mutableStateOf("") }
     var code by remember { mutableStateOf("") }
     var nick by remember { mutableStateOf("") }
@@ -86,6 +93,12 @@ fun OnboardingScreen(core: StayaCore, accountId: String) {
             "Приглашение присылает друг. Ссылку на сервер — его владелец.",
             style = MaterialTheme.typography.bodySmall,
         )
+        if (DeepLink.parse(link) is DeepLink.Invite) {
+            Text(
+                "Это приглашение: после создания аккаунта пригласивший станет твоим другом и будет видеть, где ты.",
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
 
         TextButton(onClick = { advanced = !advanced }) { Text(if (advanced) "Скрыть дополнительное" else "Дополнительно") }
         if (advanced) {
@@ -151,15 +164,3 @@ fun OnboardingScreen(core: StayaCore, accountId: String) {
         }
     }
 }
-
-/** Главный экран (пока заготовка): карта и друзья — задачи 4.3–4.4. */
-@Composable
-fun HomeScreen(nick: String, server: String, accountId: String) {
-    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(nick, style = MaterialTheme.typography.headlineMedium)
-        Text("Сервер: $server")
-        Text("Аккаунт: ${accountId.take(8)}…")
-        Text("Карта и друзья появятся в следующих версиях.", style = MaterialTheme.typography.bodySmall)
-    }
-}
-

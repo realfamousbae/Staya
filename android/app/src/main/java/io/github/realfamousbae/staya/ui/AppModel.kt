@@ -32,6 +32,12 @@ object AppModel {
         private set
     var error by mutableStateOf<String?>(null)
 
+    /** Приложение на экране (onResume/onPause). */
+    var foreground by mutableStateOf(false)
+
+    /** Ссылка, открытая извне и ещё не показанная (онбординг или подтверждение). */
+    var pendingLink by mutableStateOf<DeepLink?>(null)
+
     /** Есть привязка к серверу и ник — онбординг пройден. */
     fun refresh(core: StayaCore, accountId: String) {
         worker.execute {
@@ -96,6 +102,8 @@ object AppModel {
     }
 
     private class NoServer : Exception()
+
+    fun describeError(e: Exception): String = describe(e)
 
     private fun describe(e: Exception): String = when (e) {
         is NoServer -> "Вставь приглашение друга или ссылку на сервер — или укажи сервер в «Дополнительно»."

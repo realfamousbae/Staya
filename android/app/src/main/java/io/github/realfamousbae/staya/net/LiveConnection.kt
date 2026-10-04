@@ -1,6 +1,7 @@
 package io.github.realfamousbae.staya.net
 
 import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import okhttp3.Response
@@ -21,8 +22,9 @@ class LiveConnection(
     private val sync: CoreSync,
     private val onEvents: (List<CoreEvent>) -> Unit,
     private val onError: (Exception) -> Unit = {},
+    /** Общий поток с остальной сетью приложения: отправки ядра не должны идти параллельно. */
+    private val worker: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor(),
 ) {
-    private val worker = Executors.newSingleThreadScheduledExecutor()
     private val backoff = Backoff()
     private var socket: WebSocket? = null
     private var reconnect: ScheduledFuture<*>? = null

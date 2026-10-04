@@ -35,7 +35,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.LaunchedEffect
 import io.github.realfamousbae.staya.ui.AppModel
-import io.github.realfamousbae.staya.ui.HomeScreen
+import io.github.realfamousbae.staya.ui.DeepLink
+import io.github.realfamousbae.staya.ui.FriendsModel
+import io.github.realfamousbae.staya.ui.FriendsScreen
 import io.github.realfamousbae.staya.ui.OnboardingScreen
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -63,6 +65,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        if (savedInstanceState == null) handleLink(intent)
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
@@ -72,15 +75,28 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleLink(intent)
+    }
+
+    /** Ссылка staya://… из другого приложения — только в поле онбординга или на подтверждение. */
+    private fun handleLink(intent: Intent?) {
+        DeepLink.parse(intent?.dataString)?.let { AppModel.pendingLink = it }
+    }
+
     override fun onResume() {
         super.onResume()
         Probe.uiVisible = true
         AppCore.openAsync(this)
+        AppModel.foreground = true
         resumes++
     }
 
     override fun onPause() {
         Probe.uiVisible = false
+        AppModel.foreground = false
+        FriendsModel.stop()
         super.onPause()
     }
 }
@@ -106,7 +122,19 @@ private fun Root(refresh: Int) {
                 when (val phase = AppModel.phase) {
                     AppModel.Phase.Loading -> CircularProgressIndicator(modifier = Modifier.padding(16.dp))
                     AppModel.Phase.Onboarding -> OnboardingScreen(state.core, state.accountId)
-                    is AppModel.Phase.Ready -> HomeScreen(phase.nick, phase.server, phase.accountId)
+                    is AppModel.Phase.Ready -> {
+                        // На экране — синхронизация и WebSocket; при уходе в фон — стоп (onPause).
+                        LaunchedEffect(state, AppModel.foreground) {
+                            if (AppModel.foreground) FriendsModel.start(state.core)
+                        }
+                        LaunchedEffect(AppModel.pendingLink) {
+                            AppModel.pendingLink?.let {
+                                AppModel.pendingLink = null
+                                FriendsModel.open(it)
+                            }
+                        }
+                        FriendsScreen(phase.nick, phase.server)
+                    }
                 }
             }
             AppCore.State.Closed, AppCore.State.Opening -> CircularProgressIndicator(modifier = Modifier.padding(16.dp))

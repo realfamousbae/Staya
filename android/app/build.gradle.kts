@@ -61,6 +61,13 @@ dependencies {
     // HTTP и WebSocket к серверу Staya (задача 4.1b): проверка ключа сервера при
     // установке соединения, пул соединений, WebSocket. Без Google Play Services.
     implementation(libs.okhttp)
+    // QR-коды приглашений (задача 4.3): ZXing core — чистая Java, без Google Play
+    // Services; кодирование и распознавание кадров камеры.
+    implementation(libs.zxing.core)
+    // Камера для сканера QR: CameraX (AndroidX, без GMS).
+    implementation(libs.camerax.camera2)
+    implementation(libs.camerax.lifecycle)
+    implementation(libs.camerax.view)
 
     testImplementation(libs.junit)
     // JVM-тесты сетевого слоя: настоящий TLS (MockWebServer + тестовые сертификаты)
