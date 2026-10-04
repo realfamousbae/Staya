@@ -36,7 +36,12 @@ test "${PIPESTATUS[0]}" -eq 0
 APP="$DERIVED/Build/Products/Debug-iphonesimulator/Staya.app"
 BUNDLE="$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$APP/Info.plist")"
 xcrun simctl install "$UDID" "$APP"
-OUT="$(xcrun simctl launch --console-pty --terminate-running-process "$UDID" "$BUNDLE" -staya-selftest 2>&1 || true)"
+# Первый запуск на свежем симуляторе бывает медленным: до трёх попыток.
+for attempt in 1 2 3; do
+  OUT="$(xcrun simctl launch --console-pty --terminate-running-process "$UDID" "$BUNDLE" -staya-selftest 2>&1 || true)"
+  echo "$OUT" | grep -q "SELFTEST OK" && break
+  echo "self-test attempt $attempt: no result"
+done
 echo "$OUT" | grep -q "SELFTEST OK" || { echo "self-test failed, app output:"; echo "$OUT"; exit 1; }
 echo "SELFTEST OK"
 

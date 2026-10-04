@@ -13,14 +13,24 @@ enum SelfTest {
             return
         }
         guard args.contains("-staya-selftest") else { return }
-        do {
-            try run()
-            print("SELFTEST OK")
-            exit(0)
-        } catch {
-            print("SELFTEST FAIL: \(error)")
-            exit(1)
+        // Не на главном потоке: на только что загруженном симуляторе Keychain
+        // отвечает долго, и система убила бы приложение за медленный запуск.
+        print("SELFTEST START")
+        Task.detached {
+            do {
+                try run()
+                finish("SELFTEST OK", code: 0)
+            } catch {
+                finish("SELFTEST FAIL: \(error)", code: 1)
+            }
         }
+    }
+
+    /// Печатает итог и сразу сбрасывает вывод: консоль симулятора — не терминал.
+    private static func finish(_ line: String, code: Int32) -> Never {
+        print(line)
+        fflush(stdout)
+        exit(code)
     }
 
     private struct Failure: Error, CustomStringConvertible {
@@ -70,11 +80,9 @@ enum SelfTest {
     private static func devExchange(server: URL) async {
         do {
             try await exchange(server: server)
-            print("DEVEXCHANGE OK")
-            exit(0)
+            finish("DEVEXCHANGE OK", code: 0)
         } catch {
-            print("DEVEXCHANGE FAIL: \(error)")
-            exit(1)
+            finish("DEVEXCHANGE FAIL: \(error)", code: 1)
         }
     }
 
