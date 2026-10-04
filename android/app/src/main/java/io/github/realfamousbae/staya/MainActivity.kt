@@ -133,7 +133,7 @@ private fun Root(refresh: Int) {
                                 FriendsModel.open(it)
                             }
                         }
-                        FriendsScreen(phase.nick, phase.server)
+                        FriendsScreen(state.core, phase.nick, phase.server)
                     }
                 }
             }

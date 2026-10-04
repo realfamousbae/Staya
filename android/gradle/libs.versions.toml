@@ -9,6 +9,7 @@ androidxTestRunner = "1.7.0"
 okhttp = "5.5.0"
 zxing = "3.5.4"
 camerax = "1.6.2"
+maplibre = "13.6.1"
 androidxTestExtJunit = "1.3.0"
 androidxAnnotation = "1.11.0"
 
@@ -26,6 +27,7 @@ zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" 
 camerax-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "camerax" }
 camerax-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "camerax" }
 camerax-view = { group = "androidx.camera", name = "camera-view", version.ref = "camerax" }
+maplibre = { group = "org.maplibre.gl", name = "android-sdk", version.ref = "maplibre" }
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 okhttp-mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver3", version.ref = "okhttp" }
 okhttp-tls = { group = "com.squareup.okhttp3", name = "okhttp-tls", version.ref = "okhttp" }

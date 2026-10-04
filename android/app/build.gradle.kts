@@ -68,6 +68,10 @@ dependencies {
     implementation(libs.camerax.camera2)
     implementation(libs.camerax.lifecycle)
     implementation(libs.camerax.view)
+    // Карта (задача 4.4): MapLibre Native — открытый движок векторных карт без
+    // Google Play Services и без телеметрии. Стиль, тайлы, шрифты и спрайты — только
+    // с сервера Staya; все запросы карты идут через наш OkHttp с проверкой ключа.
+    implementation(libs.maplibre)
 
     testImplementation(libs.junit)
     // JVM-тесты сетевого слоя: настоящий TLS (MockWebServer + тестовые сертификаты)

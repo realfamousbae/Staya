@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -21,7 +22,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.BottomSheetScaffold
 import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -31,6 +34,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -41,14 +45,19 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
+import io.github.realfamousbae.staya.map.FriendsMap
+import io.github.realfamousbae.staya.map.MapFocus
+import io.github.realfamousbae.staya.map.locationStatus
 import uniffi.staya_core.FriendView
 import uniffi.staya_core.InviteMethod
+import uniffi.staya_core.LocationKind
+import uniffi.staya_core.StayaCore
 
-/** Главный экран: друзья и добавление (4.3). Карта — 4.4. */
+/** Главный экран: карта друзей (4.4), под ней список и добавление (4.3). */
 @Composable
-fun FriendsScreen(nick: String, server: String) {
+fun FriendsScreen(core: StayaCore, nick: String, server: String) {
     when (val s = FriendsModel.screen) {
-        FriendsModel.Screen.Home -> FriendsHome(nick, server)
+        FriendsModel.Screen.Home -> FriendsHome(core, nick, server)
         is FriendsModel.Screen.ShowQr -> ShowQr(s.uri, s.expiresAt)
         is FriendsModel.Screen.ShareLink -> ShareLink(s.uri)
         FriendsModel.Screen.Scan -> Scan()
@@ -70,45 +79,62 @@ private fun Message() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun FriendsHome(nick: String, server: String) {
+private fun FriendsHome(core: StayaCore, nick: String, server: String) {
     val context = LocalContext.current
-    Column(
-        modifier = Modifier.verticalScroll(rememberScrollState()).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Text(nick, style = MaterialTheme.typography.headlineMedium)
-        Text("Сервер: $server", style = MaterialTheme.typography.bodySmall)
-        Message()
-
-        Text("Друзья", style = MaterialTheme.typography.titleMedium)
-        if (FriendsModel.friends.isEmpty()) {
-            Text("Пока никого. Покажи QR-код другу рядом или отправь ссылку.", style = MaterialTheme.typography.bodyMedium)
+    var focus by remember { mutableStateOf<MapFocus?>(null) }
+    var now by remember { mutableLongStateOf(System.currentTimeMillis() / 1000) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(60_000)
+            now = System.currentTimeMillis() / 1000
         }
-        FriendsModel.friends.forEach { FriendRow(it) }
+    }
+    BottomSheetScaffold(
+        sheetPeekHeight = 180.dp,
+        sheetContent = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Message()
+                Text("Друзья", style = MaterialTheme.typography.titleMedium)
+                if (FriendsModel.friends.isEmpty()) {
+                    Text("Пока никого. Покажи QR-код другу рядом или отправь ссылку.", style = MaterialTheme.typography.bodyMedium)
+                }
+                FriendsModel.friends.forEach { f -> FriendRow(f, now) { focus = MapFocus(f.accountId) } }
 
-        HorizontalDivider()
-        Text("Добавить друга", style = MaterialTheme.typography.titleMedium)
-        Button(onClick = { FriendsModel.invite(InviteMethod.QR) }) { Text("Показать мой QR-код") }
-        OutlinedButton(onClick = { FriendsModel.invite(InviteMethod.LINK) }) { Text("Отправить ссылку") }
-        OutlinedButton(onClick = { FriendsModel.screen = FriendsModel.Screen.Scan }) { Text("Сканировать QR-код друга") }
-        OutlinedButton(onClick = {
-            val text = context.getSystemService(ClipboardManager::class.java).primaryClip
-                ?.getItemAt(0)?.coerceToText(context)?.toString()
-            val link = DeepLink.parse(text)
-            if (link == null) {
-                FriendsModel.message = "В буфере нет ссылки staya://. Скопируй приглашение целиком."
-            } else {
-                FriendsModel.open(link)
+                HorizontalDivider()
+                Text("Добавить друга", style = MaterialTheme.typography.titleMedium)
+                Button(onClick = { FriendsModel.invite(InviteMethod.QR) }) { Text("Показать мой QR-код") }
+                OutlinedButton(onClick = { FriendsModel.invite(InviteMethod.LINK) }) { Text("Отправить ссылку") }
+                OutlinedButton(onClick = { FriendsModel.screen = FriendsModel.Screen.Scan }) { Text("Сканировать QR-код друга") }
+                OutlinedButton(onClick = {
+                    val text = context.getSystemService(ClipboardManager::class.java).primaryClip
+                        ?.getItemAt(0)?.coerceToText(context)?.toString()
+                    val link = DeepLink.parse(text)
+                    if (link == null) {
+                        FriendsModel.message = "В буфере нет ссылки staya://. Скопируй приглашение целиком."
+                    } else {
+                        FriendsModel.open(link)
+                    }
+                }) { Text("Вставить ссылку друга") }
+
+                HorizontalDivider()
+                Text("$nick · сервер $server", style = MaterialTheme.typography.bodySmall)
             }
-        }) { Text("Вставить ссылку друга") }
+        },
+    ) { padding ->
+        FriendsMap(core, server, FriendsModel.friends, focus, modifier = Modifier.fillMaxSize().padding(padding))
     }
 }
 
 @Composable
-private fun FriendRow(f: FriendView) {
+private fun FriendRow(f: FriendView, now: Long, onShow: () -> Unit) {
+    val visible = f.location?.let { it.kind != LocationKind.HIDDEN } == true
     Row(
-        modifier = Modifier.fillMaxWidth().clickable { FriendsModel.showSafety(f) }.padding(vertical = 6.dp),
+        modifier = Modifier.fillMaxWidth().clickable(enabled = visible, onClick = onShow).padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         f.avatar?.takeIf { it.isNotEmpty() }?.let { bytes ->
@@ -117,15 +143,18 @@ private fun FriendRow(f: FriendView) {
                 Spacer(Modifier.width(12.dp))
             }
         }
-        Column {
+        Column(modifier = Modifier.weight(1f)) {
             Text(f.nick ?: "Без имени")
             val status = when {
                 !f.active -> "ждём ответа"
-                f.verified -> "проверен"
-                else -> "не проверен — сверьте код безопасности"
+                else -> locationStatus(f, now) ?: "пока нет позиции"
             }
             Text(status, style = MaterialTheme.typography.bodySmall)
+            if (f.active && !f.verified) {
+                Text("не проверен — сверьте код безопасности", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            }
         }
+        if (f.active) TextButton(onClick = { FriendsModel.showSafety(f) }) { Text("Код") }
     }
 }
 
