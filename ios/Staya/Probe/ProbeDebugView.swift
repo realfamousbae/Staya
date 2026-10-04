@@ -9,6 +9,7 @@ struct ProbeDebugView: View {
     @State private var tokenInput = ""
     @State private var tokenSaved = LocationEngine.shared.hasToken
     @State private var keychainOK: Bool?
+    @State private var core = AppCore.shared
 
     var body: some View {
         NavigationStack {
@@ -61,10 +62,17 @@ struct ProbeDebugView: View {
                 Section("Окружение") {
                     row("Ядро", coreVersion())
                     row("Keychain", keychainOK.map { $0 ? "OK" : "ошибка" } ?? "…")
+                    row("Аккаунт", core.state.summary)
+                    if core.state.isBroken {
+                        Button("Сбросить локальные данные", role: .destructive) { core.reset() }
+                    }
                 }
             }
             .navigationTitle("Staya · замер")
-            .task { keychainOK = Diagnostics.keychainRoundTrip() }
+            .task {
+                keychainOK = Diagnostics.keychainRoundTrip()
+                core.open()
+            }
         }
     }
 

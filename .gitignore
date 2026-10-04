@@ -12,6 +12,8 @@ ios/**/xcuserdata/
 ios/**/DerivedData/
 ios/**/*.xcframework
 ios/**/Generated/
+ios/build/
+ios/StayaCore/build/
 
 # Android
 android/.gradle/

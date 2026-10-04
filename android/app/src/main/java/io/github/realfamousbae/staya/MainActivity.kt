@@ -69,6 +69,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         Probe.uiVisible = true
+        AppCore.openAsync(this)
         resumes++
     }
 
@@ -212,6 +213,10 @@ private fun ProbeScreen(@Suppress("UNUSED_PARAMETER") refresh: Int) {
 
         Section("Окружение")
         Line("Ядро", coreVersion())
+        Line("Аккаунт", coreStatus(AppCore.state))
+        if (AppCore.state is AppCore.State.Broken) {
+            OutlinedButton(onClick = { AppCore.resetAsync(context) }) { Text("Сбросить локальные данные") }
+        }
         Line("Устройство", Probe.deviceId)
     }
 }
@@ -226,6 +231,13 @@ private fun requestBatteryExemption(context: android.content.Context) {
     context.startActivity(
         Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, "package:${context.packageName}".toUri()),
     )
+}
+
+private fun coreStatus(s: AppCore.State) = when (s) {
+    AppCore.State.Closed, AppCore.State.Opening -> "открывается…"
+    is AppCore.State.Open -> s.accountId.take(8) + "…"
+    is AppCore.State.Unavailable -> "недоступно: ${s.reason}"
+    is AppCore.State.Broken -> "база не читается: ${s.reason}"
 }
 
 private fun authText(a: ProbeRecord.Auth) = when (a) {

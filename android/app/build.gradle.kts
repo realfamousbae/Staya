@@ -17,6 +17,9 @@ android {
 
         // Rust-ядро собирается только под arm64 (см. scripts/build-android-core.sh).
         ndk { abiFilters += "arm64-v8a" }
+
+        // Тесты на эмуляторе в CI (Keystore настоящий только на устройстве).
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
@@ -57,4 +60,7 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     testImplementation(libs.junit)
+    // Только для тестов на эмуляторе: AndroidJUnitRunner и AndroidJUnit4.
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.ext.junit)
 }

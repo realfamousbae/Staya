@@ -63,12 +63,19 @@ jobs:
           "$RUNNER_TEMP/swifttest"
       - name: iOS probe tests (queue, contract with probe-server)
         run: scripts/test-ios-probe.sh
+      - name: Database key rules (macOS host)
+        run: |
+          swiftc -swift-version 6 ios/Staya/Core/DbKey.swift ios/CoreTests/DbKey/main.swift -o "$RUNNER_TEMP/dbkey"
+          "$RUNNER_TEMP/dbkey"
       - name: Build app (simulator)
         run: |
           xcodebuild -project ios/Staya.xcodeproj -scheme Staya \
             -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO build | tail -n 20
           test "${PIPESTATUS[0]}" -eq 0
+      - name: Simulator self-test (Keychain, core)
+        timeout-minutes: 20
+        run: scripts/test-ios-simulator.sh
 
   android:
     name: Android
@@ -99,3 +106,47 @@ jobs:
         run: ./gradlew --no-daemon assembleDebug lintDebug testDebugUnitTest
       - name: Android probe contract with probe-server
         run: scripts/test-android-probe.sh
+
+  # Keystore и ядро на настоящем Android (эмулятор x86_64; arm64-ядро идёт через
+  # трансляцию ARM, которая есть в образах API 30+).
+  android-device:
+    name: Android emulator
+    runs-on: ubuntu-24.04
+    env:
+      NDK_VERSION: 29.0.14206865
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "21"
+      - run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29 # v2.87.21
+        with:
+          tool: cargo-ndk
+      - name: Install Android SDK packages
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37.0" "ndk;$NDK_VERSION" > /dev/null
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+      - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+      - name: Build app and test APKs
+        working-directory: android
+        run: ./gradlew --no-daemon assembleDebug assembleDebugAndroidTest
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Device tests (Keystore, core)
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          working-directory: android
+          script: ./gradlew --no-daemon connectedDebugAndroidTest

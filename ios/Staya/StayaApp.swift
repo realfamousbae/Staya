@@ -17,6 +17,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
+        #if DEBUG
+        SelfTest.runIfRequested()
+        #endif
         #if STAYA_PROBE
         // Здесь, а не в экране: при фоновом перезапуске по SLC/визиту сцены нет.
         LocationEngine.shared.start(launchedForLocation: launchOptions?[.location] != nil)

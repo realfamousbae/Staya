@@ -17,6 +17,8 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.edit
+import io.github.realfamousbae.staya.secure.SecretRead
+import io.github.realfamousbae.staya.secure.SecretStore
 import java.io.File
 import java.util.UUID
 import java.util.concurrent.Executors
@@ -120,9 +122,13 @@ object Probe {
         prefs.edit { putBoolean(K_RUNNING, on) }
     }
 
-    fun saveToken(token: String): Boolean = runCatching { tokenStore.save(token.trim()); true }.getOrDefault(false)
+    fun saveToken(token: String): Boolean =
+        runCatching { tokenStore.replace(token.trim().toByteArray(Charsets.UTF_8)); true }.getOrDefault(false)
 
-    val hasToken: Boolean get() = !tokenStore.load().isNullOrEmpty()
+    private fun loadToken(): String? =
+        (tokenStore.read() as? SecretRead.Found)?.value?.toString(Charsets.UTF_8)
+
+    val hasToken: Boolean get() = !loadToken().isNullOrEmpty()
 
     fun resetCounters() {
         eventsTotal = 0; sentTotal = 0; failedTotal = 0
@@ -190,7 +196,7 @@ object Probe {
     /** На [executor]. Отправленное удаляется по id — добавленное во время отправки не теряется. */
     private fun flush() {
         if (sending) return
-        val token = tokenStore.load()
+        val token = loadToken()
         if (token.isNullOrEmpty()) {
             lastStatus = "нет токена"
             return
