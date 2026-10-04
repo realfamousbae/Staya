@@ -38,3 +38,6 @@ for i in 1 2 3 4; do
   sleep 10
 done
 "${SSH[@]}" "$HOST" "cd $APP_DIR && docker compose up -d --remove-orphans $* && docker compose ps"
+# Caddyfile смонтирован файлом: контейнер не пересоздаётся при его изменении,
+# поэтому конфигурация перечитывается явно (без простоя).
+"${SSH[@]}" "$HOST" "cd $APP_DIR && docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile"
