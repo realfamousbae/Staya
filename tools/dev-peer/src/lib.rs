@@ -281,7 +281,11 @@ impl Peer {
     }
 
     pub fn set_nick(&self, nick: &str) -> Result<(), Error> {
-        self.core.set_profile(nick.to_owned(), Vec::new())?;
+        self.set_profile(nick, Vec::new())
+    }
+
+    pub fn set_profile(&self, nick: &str, avatar: Vec<u8>) -> Result<(), Error> {
+        self.core.set_profile(nick.to_owned(), avatar)?;
         self.flush()
     }
 

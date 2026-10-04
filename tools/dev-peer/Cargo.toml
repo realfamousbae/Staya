@@ -19,6 +19,8 @@ tempfile = "3.27.0"
 ureq = { version = "3.4.2", default-features = false }
 
 [dev-dependencies]
+# Разбор base64 в записанном трафике (tests/e2e.rs); уже в workspace (staya-proto).
+base64 = { workspace = true }
 staya-server = { path = "../../server", features = ["dev"] }
 axum = { workspace = true }
 tokio = { workspace = true }
