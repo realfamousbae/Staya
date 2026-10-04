@@ -7,9 +7,10 @@ import StayaCore
 enum SelfTest {
     static func runIfRequested() {
         let args = CommandLine.arguments
-        if let i = args.firstIndex(of: "-staya-devexchange"), i + 1 < args.count, let url = URL(string: args[i + 1]) {
+        if let i = args.firstIndex(of: "-staya-devexchange"), i + 2 < args.count, let url = URL(string: args[i + 1]) {
             // Сеть асинхронная: запуск приложения продолжается, итог — exit() из задачи.
-            Task.detached { await devExchange(server: url) }
+            let invite = args[i + 2]
+            Task.detached { await devExchange(server: url, invite: invite) }
             return
         }
         guard args.contains("-staya-selftest") else { return }
@@ -70,42 +71,35 @@ enum SelfTest {
         try expect(id == again, "reopen with stored key")
     }
 
-    // MARK: - Обмен с dev-peer (задача 2.10)
+    // MARK: - Обмен с dev-peer через настоящий сервер (задачи 2.10, 4.1c)
 
     // Должны совпадать с аргументами dev-peer в scripts/test-ios-simulator.sh.
     private static let mine = (lat: Int32(599_386_000), lon: Int32(303_141_000))
     private static let peer = (lat: Int32(557_558_000), lon: Int32(376_173_000))
 
-    /// Временная база, приглашение с `/dev/invite`, обмен позициями с тестовым собеседником.
-    private static func devExchange(server: URL) async {
+    /// Временная база, приглашение собеседника, обмен позициями через настоящий сервер.
+    private static func devExchange(server: URL, invite: String) async {
         do {
-            try await exchange(server: server)
+            try await exchange(server: server, invite: invite)
             finish("DEVEXCHANGE OK", code: 0)
         } catch {
             finish("DEVEXCHANGE FAIL: \(error)", code: 1)
         }
     }
 
-    private static func exchange(server: URL) async throws {
+    private static func exchange(server: URL, invite: String) async throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }
         let core = try StayaCore.open(dbPath: dir.appendingPathComponent("staya.db").path, dbKey: try DbKey.random())
-        let http = StayaHTTP(base: server, token: try core.identity().accountId)
-        let sync = CoreSync(core: core, http: http)
+        // Сервер — из приглашения; адрес подключения для симулятора — свой.
+        _ = try core.setServerFromLink(uri: invite)
+        let client = try StayaClient(core: core, baseURL: server)
+        let sync = CoreSync(core: core, http: client)
         try await sync.publishKeys()
+        try await sync.accept(invite)
 
         let deadline = Date().addingTimeInterval(300)
-        var invite: String?
-        while invite == nil {
-            invite = try? await http.getPublic("/dev/invite")
-            if invite == nil {
-                try expect(Date() < deadline, "no invite from peer")
-                try await Task.sleep(for: .milliseconds(500))
-            }
-        }
-        try await sync.accept(invite!)
-
         var gotAt: Date?
         while gotAt.map({ Date().timeIntervalSince($0) < 20 }) ?? true {
             try expect(Date() < deadline, "no location from peer")

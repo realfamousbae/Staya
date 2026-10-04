@@ -87,12 +87,24 @@ jobs:
             -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO build | tail -n 20
           test "${PIPESTATUS[0]}" -eq 0
-      - name: Simulator self-test (Keychain, core, exchange with dev-peer)
+      - name: Server trust rule (macOS host, test certificates)
+        run: scripts/test-ios-trust.sh
+      # Для обмена через настоящий сервер: Docker на macOS-раннере нет.
+      - name: PostgreSQL 18 (Homebrew)
+        timeout-minutes: 15
+        run: |
+          brew install --quiet postgresql@18
+          PG="$(brew --prefix postgresql@18)/bin"
+          "$PG/initdb" -D "$RUNNER_TEMP/pg" -U staya --auth=trust > /dev/null
+          "$PG/pg_ctl" -D "$RUNNER_TEMP/pg" -o "-p 5432 -k $RUNNER_TEMP" -l "$RUNNER_TEMP/pg.log" -w start
+          "$PG/createdb" -h 127.0.0.1 -U staya staya
+      - name: Simulator self-test (Keychain, core, exchange through the server)
         timeout-minutes: 30
         env:
           STAYA_LOG_DIR: ${{ runner.temp }}/staya-logs
+          STAYA_EXCHANGE_DATABASE_URL: postgres://staya@127.0.0.1:5432/staya
         run: scripts/test-ios-simulator.sh
-      - name: Dev server and peer logs
+      - name: Server and peer logs
         if: failure()
         run: cat "$RUNNER_TEMP"/staya-logs/*.log || true
 

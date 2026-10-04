@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Самотест приложения на iOS-симуляторе (CI): настоящий Keychain и ядро, затем
-# обмен позициями с тестовым собеседником (tools/dev-peer) через dev-сервер (2.10).
+# обмен позициями с тестовым собеседником (tools/dev-peer --login) через настоящий
+# сервер Staya с PostgreSQL и входом (4.1c). Адрес базы — STAYA_EXCHANGE_DATABASE_URL.
 # Локально нужен скачанный рантайм iOS-симулятора (около 8 ГБ) — поэтому только в CI.
 set -euo pipefail
 
@@ -45,21 +46,25 @@ done
 echo "$OUT" | grep -q "SELFTEST OK" || { echo "self-test failed, app output:"; echo "$OUT"; exit 1; }
 echo "SELFTEST OK"
 
-# Обмен с dev-peer. Симулятор делит сеть с хостом: 127.0.0.1 — это Mac.
-cargo build -q -p staya-server --features dev --bin staya-dev-server
+# Обмен через настоящий сервер. Симулятор делит сеть с хостом: 127.0.0.1 — это Mac.
+: "${STAYA_EXCHANGE_DATABASE_URL:?set STAYA_EXCHANGE_DATABASE_URL}"
+cargo build -q -p staya-server --bin staya-server
 cargo build -q -p dev-peer
-target/debug/staya-dev-server > "$LOGS/dev-server.log" 2>&1 &
+STAYA_DATABASE_URL="$STAYA_EXCHANGE_DATABASE_URL" STAYA_DOMAIN=staya.test STAYA_LISTEN=127.0.0.1:8080 \
+  target/debug/staya-server > "$LOGS/server.log" 2>&1 &
 SERVER_PID=$!
-for _ in $(seq 1 50); do curl -s -o /dev/null http://127.0.0.1:8787/dev/invite && break; sleep 0.2; done
+for _ in $(seq 1 50); do curl -sf -o /dev/null http://127.0.0.1:8080/health && break; sleep 0.2; done
+INVITE_FILE="$DERIVED/invite"
 # Координаты должны совпадать с SelfTest.swift.
-target/debug/dev-peer --server http://127.0.0.1:8787 --role invite \
-  --mine 557558000,376173000 --expect 599386000,303141000 --timeout 600 \
+target/debug/dev-peer --server http://127.0.0.1:8080 --login staya.test --invite-file "$INVITE_FILE" \
+  --role invite --mine 557558000,376173000 --expect 599386000,303141000 --timeout 600 \
   > "$LOGS/dev-peer.log" 2>&1 &
 PEER_PID=$!
+for _ in $(seq 1 50); do [ -s "$INVITE_FILE" ] && break; sleep 0.2; done
 OUT="$(xcrun simctl launch --console-pty --terminate-running-process "$UDID" "$BUNDLE" \
-  -staya-devexchange http://127.0.0.1:8787 2>&1 || true)"
+  -staya-devexchange http://127.0.0.1:8080 "$(cat "$INVITE_FILE")" 2>&1 || true)"
 echo "$OUT" | grep -q "DEVEXCHANGE OK" || { echo "dev exchange failed, app output:"; echo "$OUT"; exit 1; }
 echo "DEVEXCHANGE OK"
 wait "$PEER_PID"
 grep -q "PEER GOT LOCATION" "$LOGS/dev-peer.log"
-echo "dev exchange: both sides got the other's location"
+echo "exchange through the server: both sides got the other's location"

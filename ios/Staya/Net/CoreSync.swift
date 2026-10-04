@@ -5,7 +5,7 @@ import StayaCore
 /// здесь — только запросы.
 struct CoreSync: Sendable {
     let core: StayaCore
-    let http: StayaHTTP
+    let http: StayaClient
 
     private var now: Int64 { Int64(Date().timeIntervalSince1970) }
 
@@ -42,6 +42,14 @@ struct CoreSync: Sendable {
     /// Забирает ящик, обрабатывает, подтверждает и отправляет ответы.
     func sync() async throws -> [CoreEvent] {
         let processed = try core.processMailbox(mailboxJson: try await http.get("/v1/mailbox"), now: now)
+        if let ack = processed.ackJson { _ = try await http.post("/v1/mailbox/ack", ack) }
+        try await flush()
+        return processed.events
+    }
+
+    /// Одно событие WebSocket: обработать, подтвердить, отправить ответы.
+    func handleWsEvent(_ json: String) async throws -> [CoreEvent] {
+        let processed = try core.processWsEvent(eventJson: json, now: now)
         if let ack = processed.ackJson { _ = try await http.post("/v1/mailbox/ack", ack) }
         try await flush()
         return processed.events
