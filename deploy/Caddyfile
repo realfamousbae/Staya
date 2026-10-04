@@ -28,6 +28,12 @@
 		reverse_proxy 127.0.0.1:8081
 	}
 
+	# Сервер Staya: HTTP API и WebSocket (/v1/ws). Caddy дописывает адрес клиента
+	# в X-Forwarded-For — сервер берёт его только для лимитов, в памяти.
+	handle /v1/* {
+		reverse_proxy 127.0.0.1:8082
+	}
+
 	handle {
 		respond 404
 	}

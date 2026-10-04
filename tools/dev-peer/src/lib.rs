@@ -61,9 +61,10 @@ impl Peer {
     }
 
     /// Настоящий сервер: регистрация и вход по подписи (protocol §4.1–4.2).
-    /// `domain` — имя сервера, которое он ждёт в подписи входа.
-    pub fn login(&mut self, domain: &str) -> Result<(), Error> {
-        let register = self.core.register_request(None)?;
+    /// `domain` — имя сервера, которое он ждёт в подписи входа; `invite_code` —
+    /// код приглашения закрытого сервера.
+    pub fn login(&mut self, domain: &str, invite_code: Option<String>) -> Result<(), Error> {
+        let register = self.core.register_request(invite_code)?;
         let r = self
             .agent
             .post(self.url("/v1/accounts"))

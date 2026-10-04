@@ -144,8 +144,8 @@ fn two_cores_through_real_server_leave_no_coordinates() {
 
     let mut alice = Peer::new(&base).unwrap();
     let mut bob = Peer::new(&base).unwrap();
-    alice.login(DOMAIN).unwrap();
-    bob.login(DOMAIN).unwrap();
+    alice.login(DOMAIN, None).unwrap();
+    bob.login(DOMAIN, None).unwrap();
     alice.publish_keys().unwrap();
     bob.publish_keys().unwrap();
     alice.set_nick("Алиса").unwrap();

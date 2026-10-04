@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
 # Деплой с Mac: копирует конфиги и перезапускает сервисы (docs/server.md).
-#   deploy/deploy.sh [сервис ...]      # без аргументов — все сервисы
+#   STAYA_HOST=user@host STAYA_DOMAIN=имя deploy/deploy.sh [сервис ...]
+# Без сервисов — все. Адрес и имя сервера в репозитории не хранятся (он публичный):
+# STAYA_HOST — куда заходить по SSH, STAYA_DOMAIN — имя для TLS, его deploy.sh
+# записывает в /srv/staya/.env на сервере.
 # Через туннели новые SSH-соединения часто обрываются, поэтому одно постоянное
 # соединение (ControlMaster) и повторы.
 set -euo pipefail
 
-HOST="${STAYA_HOST:-staya@2.27.42.60}"
+HOST="${STAYA_HOST:?set STAYA_HOST=user@host}"
+DOMAIN="${STAYA_DOMAIN:?set STAYA_DOMAIN to the server name for TLS}"
 KEY="${STAYA_KEY:-$HOME/.ssh/staya_vps}"
 APP_DIR=/srv/staya
 DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -23,6 +27,9 @@ done
 # Сначала базовая настройка (идемпотентна), затем конфиги.
 "${SSH[@]}" "$HOST" "sudo bash -s" < "$DIR/setup-server.sh"
 rsync -az -e "${SSH[*]}" "$DIR/docker-compose.yml" "$DIR/Caddyfile" "$HOST:$APP_DIR/"
+# Имя сервера — в .env на сервере (права 600), одна строка STAYA_DOMAIN.
+"${SSH[@]}" "$HOST" "cd $APP_DIR && touch .env && chmod 600 .env && \
+  { grep -v '^STAYA_DOMAIN=' .env > .env.new || true; } && echo 'STAYA_DOMAIN=$DOMAIN' >> .env.new && mv .env.new .env && chmod 600 .env"
 
 # Исходящие соединения с VPS к реестрам иногда сбоят — повторяем скачивание.
 for i in 1 2 3 4; do

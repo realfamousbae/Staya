@@ -1,5 +1,11 @@
 //! `dev-peer --server http://127.0.0.1:8787 --role invite|accept --mine LAT,LON --expect LAT,LON`
 //! Координаты — градусы × 10⁷. Код выхода 0 — позиция друга пришла.
+//!
+//! `--login DOMAIN` — настоящий сервер (регистрация и вход, DOMAIN — его имя в
+//! подписи входа) вместо dev-сервера. Без TLS: к развёрнутому серверу — через
+//! SSH-туннель к его loopback-порту. Приглашение тогда передаётся через файл:
+//! `--invite-file PATH` (invite пишет, accept ждёт и читает). Код приглашения
+//! закрытого сервера — из `STAYA_INVITE_CODE` (не аргументом: не светится в `ps`).
 
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
@@ -32,18 +38,51 @@ fn run() -> Result<(), Error> {
         linger: secs("--linger", 30)?,
     };
 
-    let peer = Peer::new(&server)?;
+    let mut peer = Peer::new(&server)?;
+    let login = arg("--login");
+    let invite_file = arg("--invite-file");
+    if let Some(domain) = &login {
+        peer.login(
+            domain,
+            std::env::var("STAYA_INVITE_CODE")
+                .ok()
+                .filter(|c| !c.is_empty()),
+        )?;
+    }
     peer.publish_keys()?;
     match role.as_str() {
         "invite" => {
             // В dev адрес сервера в приглашении не используется: приложения идут на
             // заданный при запуске адрес (эмулятор видит хост как 10.0.2.2).
-            let host = server.trim_start_matches("http://").trim_end_matches('/');
-            peer.post_invite(&peer.create_invite(host)?)?;
+            let host = login.clone().unwrap_or_else(|| {
+                server
+                    .trim_start_matches("http://")
+                    .trim_end_matches('/')
+                    .to_owned()
+            });
+            let uri = peer.create_invite(&host)?;
+            match &invite_file {
+                Some(path) => std::fs::write(path, &uri)?,
+                None => peer.post_invite(&uri)?,
+            }
             eprintln!("PEER INVITE POSTED");
         }
         "accept" => {
-            let uri = peer.fetch_invite(Instant::now() + exchange.timeout)?;
+            let deadline = Instant::now() + exchange.timeout;
+            let uri = match &invite_file {
+                Some(path) => loop {
+                    if let Ok(uri) = std::fs::read_to_string(path)
+                        && !uri.is_empty()
+                    {
+                        break uri;
+                    }
+                    if Instant::now() > deadline {
+                        return Err("no invite file".into());
+                    }
+                    std::thread::sleep(Duration::from_millis(300));
+                },
+                None => peer.fetch_invite(deadline)?,
+            };
             peer.accept(&uri)?;
             eprintln!("PEER ACCEPTED INVITE");
         }

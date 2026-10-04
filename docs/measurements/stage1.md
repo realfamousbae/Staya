@@ -62,7 +62,7 @@
 Забрать с сервера (`docs/server.md`):
 
 ```bash
-ssh -i ~/.ssh/staya_vps staya@2.27.42.60 'sudo tar -C /srv/staya/probe-data -cz .' > probe-data.tgz
+ssh "$STAYA_HOST" 'sudo tar -C /srv/staya/probe-data -cz .' > probe-data.tgz
 ```
 
 После отчёта данные на сервере удаляются.

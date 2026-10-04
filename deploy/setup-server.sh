@@ -99,4 +99,20 @@ fi
 chown "$DEPLOY_USER:$DEPLOY_USER" "$APP_DIR/probe.env"
 chmod 600 "$APP_DIR/probe.env"
 
+# Сервер Staya: пароль базы и код приглашения на регистрацию генерируются здесь
+# и не покидают сервер. Код раздаётся друзьям лично (смотреть: sudo cat).
+if [ ! -f "$APP_DIR/postgres.env" ]; then
+  umask 077
+  pw="$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+  printf 'POSTGRES_PASSWORD=%s\n' "$pw" > "$APP_DIR/postgres.env"
+  {
+    printf 'STAYA_DATABASE_URL=postgres://staya:%s@postgres:5432/staya\n' "$pw"
+    printf 'STAYA_INVITE_CODE=%s\n' "$(head -c 12 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+  } > "$APP_DIR/server.env"
+fi
+for f in postgres.env server.env; do
+  chown "$DEPLOY_USER:$DEPLOY_USER" "$APP_DIR/$f"
+  chmod 600 "$APP_DIR/$f"
+done
+
 echo "setup ok"
