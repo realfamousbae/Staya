@@ -3,7 +3,6 @@
 mod common;
 
 use common::{Device, FakeServer};
-use staya_core::CoreError;
 use staya_core::friends::{Event, Friends, Location, Precision};
 use staya_proto::AccountId;
 use staya_proto::api::EnvelopeKind;
@@ -166,12 +165,11 @@ fn ghost_and_freeze() {
         LocationKind::Frozen
     );
 
+    // Снятие заморозки без нового замера — последний собственный замер (§7.4).
     alice.friends.set_frozen(&alice.store, None).unwrap();
-    let err = alice
-        .friends
-        .prepare_location_update(&alice.store, None, T0 + 300)
-        .unwrap_err();
-    assert!(matches!(err, CoreError::MissingLocation));
+    send(&mut alice, &mut server, None, T0 + 300);
+    let p = last_location(&bob.fetch(&mut server, T0 + 301), alice.id()).unwrap();
+    assert_eq!((p.kind, p.timestamp), (LocationKind::Exact, T0 + 100));
 }
 
 #[test]

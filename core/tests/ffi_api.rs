@@ -308,6 +308,82 @@ fn last_location_survives_restart_and_hidden_replaces_it() {
 }
 
 #[test]
+fn mode_changes_resend_the_last_own_fix() {
+    let mut server = JsonServer::default();
+    let (alice, bob) = (App::new(), App::new());
+    befriend(&alice, &bob, &mut server);
+    let last = |alice: &App| alice.core.list_friends().unwrap()[0].location.unwrap();
+
+    // Без замера вовсе отправлять нечего.
+    assert!(matches!(
+        bob.core.prepare_location_update(None, T0 + 5),
+        Err(CoreError::MissingLocation)
+    ));
+    assert!(matches!(
+        bob.core.freeze_here(),
+        Err(CoreError::MissingLocation)
+    ));
+
+    bob.core
+        .prepare_location_update(Some(HOME), T0 + 10)
+        .unwrap();
+    bob.flush(&mut server);
+    alice.sync(&mut server, T0 + 11);
+
+    // Призрак, затем снятие — без нового замера: друг снова видит последнюю точку,
+    // в том числе после перезапуска (точка в зашифрованной базе).
+    bob.core.set_ghost(true).unwrap();
+    bob.core.prepare_location_update(None, T0 + 20).unwrap();
+    bob.flush(&mut server);
+    alice.sync(&mut server, T0 + 21);
+    assert_eq!(last(&alice).kind, LocationKind::Hidden);
+    let bob = bob.reopen();
+    bob.core.set_ghost(false).unwrap();
+    bob.core.prepare_location_update(None, T0 + 30).unwrap();
+    bob.flush(&mut server);
+    alice.sync(&mut server, T0 + 31);
+    let l = last(&alice);
+    assert_eq!(
+        (l.kind, l.lat_e7, l.timestamp),
+        (LocationKind::Exact, HOME.lat_e7, T0)
+    );
+
+    // Точность для друга меняется сразу.
+    bob.core
+        .set_precision(alice.id.clone(), Precision::Approx)
+        .unwrap();
+    bob.core.prepare_location_update(None, T0 + 40).unwrap();
+    bob.flush(&mut server);
+    alice.sync(&mut server, T0 + 41);
+    assert_eq!(last(&alice).kind, LocationKind::Approx);
+    bob.core
+        .set_precision(alice.id.clone(), Precision::Exact)
+        .unwrap();
+
+    // Заморозка «здесь»: новые замеры не меняют того, что видит друг.
+    bob.core.freeze_here().unwrap();
+    let moved = Location {
+        lat_e7: 599_386_000,
+        ..HOME
+    };
+    bob.core
+        .prepare_location_update(Some(moved), T0 + 50)
+        .unwrap();
+    bob.flush(&mut server);
+    alice.sync(&mut server, T0 + 51);
+    let l = last(&alice);
+    assert_eq!((l.kind, l.lat_e7), (LocationKind::Frozen, HOME.lat_e7));
+
+    // Снятие заморозки — сразу последняя настоящая точка.
+    bob.core.set_frozen(None).unwrap();
+    bob.core.prepare_location_update(None, T0 + 60).unwrap();
+    bob.flush(&mut server);
+    alice.sync(&mut server, T0 + 61);
+    let l = last(&alice);
+    assert_eq!((l.kind, l.lat_e7), (LocationKind::Exact, moved.lat_e7));
+}
+
+#[test]
 fn rejected_envelopes_are_retired_by_complete_send() {
     let mut server = JsonServer::default();
     let (alice, bob) = (App::new(), App::new());

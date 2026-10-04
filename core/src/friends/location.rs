@@ -19,6 +19,7 @@ use crate::store::Store;
 
 pub(super) const SHARING_RECORD: &str = "sharing";
 pub(super) const HELD_RECORD: &str = "held_locations";
+pub(super) const OWN_RECORD: &str = "own_location";
 
 /// Сколько входящих Megolm-сессий держим на друга: текущая и присланные вперёд.
 const INBOUND_SESSIONS_PER_FRIEND: usize = 3;
@@ -66,6 +67,12 @@ impl Friends {
         self.save(store)
     }
 
+    /// Заморозка в последней собственной точке («я здесь», §7.4).
+    pub fn freeze_here(&mut self, store: &Store) -> Result<(), CoreError> {
+        let here = self.own.ok_or(CoreError::MissingLocation)?;
+        self.set_frozen(store, Some(here))
+    }
+
     pub fn set_precision(
         &mut self,
         store: &Store,
@@ -86,8 +93,9 @@ impl Friends {
     /// Готовит одну отправку: кладёт в исходящую очередь по пакету позиции
     /// каждому активному другу (§7.4).
     ///
-    /// `location` нужна, только если не включены призрак или заморозка.
-    /// `now` — время отправки: им помечаются пакеты `Hidden`.
+    /// `location` — новый замер; `None` — последний сохранённый (смена режима или
+    /// точности без нового замера). Без замера вовсе — ошибка, если не включены
+    /// призрак или заморозка. `now` — время отправки: им помечаются пакеты `Hidden`.
     /// Если пора ротировать сессию, `SessionShare` идёт в той же отправке раньше пакета (§7.5).
     pub fn prepare_location_update(
         &mut self,
@@ -95,6 +103,10 @@ impl Friends {
         location: Option<Location>,
         now: i64,
     ) -> Result<(), CoreError> {
+        if location.is_some() {
+            self.own = location;
+        }
+        let location = location.or(self.own);
         let sharing = self.sharing;
         if !sharing.ghost && sharing.frozen.is_none() && location.is_none() {
             return Err(CoreError::MissingLocation);

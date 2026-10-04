@@ -546,7 +546,15 @@ impl StayaCore {
         friends.set_frozen(store, frozen)
     }
 
-    /// Кладёт в исходящую очередь пакеты позиции всем друзьям.
+    /// Заморозка в последней собственной точке; нет точки — `MissingLocation`.
+    pub fn freeze_here(&self) -> Result<(), CoreError> {
+        let mut g = self.lock()?;
+        let Inner { store, friends, .. } = &mut *g;
+        friends.freeze_here(store)
+    }
+
+    /// Кладёт в исходящую очередь пакеты позиции всем друзьям. `None` — из
+    /// последнего сохранённого замера (после смены режима или точности).
     pub fn prepare_location_update(
         &self,
         location: Option<Location>,
