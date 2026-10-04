@@ -13,4 +13,9 @@ SWIFT_ACTIVE_COMPILATION_CONDITIONS = $(inherited) STAYA_PROBE
 // Ядро собирается только под arm64 (Apple Silicon); Intel-симуляторы не поддерживаем.
 EXCLUDED_ARCHS[sdk=iphonesimulator*] = x86_64
 
+// Только Debug: HTTP без TLS к dev-серверу на 127.0.0.1 (задача 2.10, самотест в CI).
+// В Release (IPA) исключения ATS нет.
+INFOPLIST_PREPROCESS = YES
+INFOPLIST_PREPROCESSOR_DEFINITIONS[config=Debug] = STAYA_DEV_NETWORK=1
+
 #include? "Local.xcconfig"

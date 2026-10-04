@@ -12,5 +12,12 @@
 	<string>Staya реже включает геолокацию, когда ты не двигаешься, — так меньше расход батареи.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>Staya отправляет позицию друзьям в фоне, в зашифрованном виде. Сервер не видит координат.</string>
+#if STAYA_DEV_NETWORK
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+#endif
 </dict>
 </plist>

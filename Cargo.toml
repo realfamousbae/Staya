@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["proto", "core", "server", "tools/uniffi-bindgen", "tools/probe-server"]
+members = ["proto", "core", "server", "tools/uniffi-bindgen", "tools/probe-server", "tools/dev-peer"]
 exclude = ["core/fuzz"]
 
 [workspace.package]

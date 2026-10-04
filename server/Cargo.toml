@@ -6,5 +6,25 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
+[features]
+# Dev-сервер (задача 2.10): ящики в памяти, без входа — отправитель берётся из
+# `Authorization: Bearer <account_id>`. Только за фичей, чтобы обычная сборка
+# не могла случайно запуститься без аутентификации.
+dev = ["dep:axum", "dep:tokio"]
+
+[dependencies]
+staya-proto = { path = "../proto" }
+serde = { workspace = true }
+axum = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[[bin]]
+name = "staya-dev-server"
+path = "src/bin/dev_server.rs"
+required-features = ["dev"]
+
 [lints]
 workspace = true
