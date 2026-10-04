@@ -21,7 +21,8 @@ use subtle::ConstantTimeEq;
 
 use crate::http::{AppState, JsonBody, internal};
 
-fn verify(sk: &[u8], message: &[u8], signature: &[u8]) -> bool {
+/// Подпись Ed25519 ключом `sk` (строгая проверка: без слабых ключей и подделки подписи).
+pub fn verify(sk: &[u8], message: &[u8], signature: &[u8]) -> bool {
     let (Ok(sk), Ok(sig)) = (<[u8; 32]>::try_from(sk), <[u8; 64]>::try_from(signature)) else {
         return false;
     };

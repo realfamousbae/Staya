@@ -15,11 +15,18 @@ pub struct Migration {
 }
 
 /// Миграции сервера по порядку. Каждая задача этапа 3 добавляет свою.
-pub const MIGRATIONS: &[Migration] = &[Migration {
-    version: 1,
-    name: "accounts",
-    sql: include_str!("../migrations/0001_accounts.sql"),
-}];
+pub const MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        name: "accounts",
+        sql: include_str!("../migrations/0001_accounts.sql"),
+    },
+    Migration {
+        version: 2,
+        name: "keys",
+        sql: include_str!("../migrations/0002_keys.sql"),
+    },
+];
 
 /// Ключ advisory-блокировки миграций (произвольная константа).
 const MIGRATION_LOCK: i64 = 0x5354_4159_415f_4442; // "STAYA_DB"

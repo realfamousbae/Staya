@@ -12,12 +12,12 @@ use axum::extract::{FromRequest, MatchedPath, Request, State};
 use axum::http::StatusCode;
 use axum::middleware::{self, Next};
 use axum::response::Response;
-use axum::routing::{get, post};
+use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use deadpool_postgres::Pool;
 use serde::de::DeserializeOwned;
 
-use crate::auth;
+use crate::{auth, keys};
 
 /// Настройки сервера, не меняющиеся во время работы.
 pub struct Config {
@@ -40,6 +40,9 @@ pub fn app(state: AppState) -> Router {
             .route("/v1/accounts", post(auth::register))
             .route("/v1/auth/challenge", post(auth::challenge))
             .route("/v1/auth/verify", post(auth::verify_challenge))
+            .route("/v1/keys", put(keys::publish))
+            .route("/v1/keys/claim", post(keys::claim))
+            .route("/v1/keys/count", get(keys::count))
             .with_state(state),
     )
 }

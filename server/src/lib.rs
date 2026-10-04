@@ -3,6 +3,7 @@
 pub mod auth;
 pub mod db;
 pub mod http;
+pub mod keys;
 pub mod mailbox;
 
 #[cfg(feature = "dev")]
