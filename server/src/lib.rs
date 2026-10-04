@@ -7,6 +7,7 @@ pub mod http;
 pub mod keys;
 pub mod live;
 pub mod mailbox;
+pub mod ratelimit;
 
 #[cfg(feature = "dev")]
 pub mod dev;

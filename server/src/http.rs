@@ -18,7 +18,8 @@ use deadpool_postgres::Pool;
 use serde::de::DeserializeOwned;
 
 use crate::live::Hub;
-use crate::{auth, envelopes, keys, live};
+use crate::ratelimit::Limits;
+use crate::{auth, envelopes, keys, live, ratelimit};
 
 /// Настройки сервера, не меняющиеся во время работы.
 pub struct Config {
@@ -26,6 +27,8 @@ pub struct Config {
     pub domain: String,
     /// Код приглашения на регистрацию; `None` — регистрация открыта.
     pub invite_code: Option<String>,
+    /// Сервер за обратным прокси (Caddy): IP клиента — из `X-Forwarded-For`.
+    pub trust_proxy: bool,
 }
 
 #[derive(Clone)]
@@ -34,12 +37,15 @@ pub struct AppState {
     pub config: Arc<Config>,
     /// Подписки WebSocket (живая доставка).
     pub hub: Arc<Hub>,
+    /// Ограничение частоты запросов.
+    pub limits: Arc<Limits>,
 }
 
 impl AppState {
     pub fn new(pool: Pool, config: Config) -> Self {
         Self {
             pool,
+            limits: Arc::new(Limits::new(config.trust_proxy)),
             config: Arc::new(config),
             hub: Arc::default(),
         }
@@ -47,20 +53,29 @@ impl AppState {
 }
 
 pub fn app(state: AppState) -> Router {
+    let limits = state.limits.clone();
+    let login = Router::new()
+        .route("/v1/accounts", post(auth::register))
+        .route("/v1/auth/challenge", post(auth::challenge))
+        .route("/v1/auth/verify", post(auth::verify_challenge))
+        .route_layer(middleware::from_fn_with_state(
+            limits.clone(),
+            ratelimit::auth,
+        ));
+    let api = Router::new()
+        .route("/health", get(health))
+        .route("/v1/keys", put(keys::publish))
+        .route("/v1/keys/claim", post(keys::claim))
+        .route("/v1/keys/count", get(keys::count))
+        .route("/v1/envelopes", post(envelopes::send))
+        .route("/v1/mailbox", get(envelopes::mailbox))
+        .route("/v1/mailbox/ack", post(envelopes::ack))
+        .route("/v1/slots/{recipient}", delete(envelopes::delete_slot))
+        .route("/v1/ws", get(live::ws));
     with_request_log(
-        Router::new()
-            .route("/health", get(health))
-            .route("/v1/accounts", post(auth::register))
-            .route("/v1/auth/challenge", post(auth::challenge))
-            .route("/v1/auth/verify", post(auth::verify_challenge))
-            .route("/v1/keys", put(keys::publish))
-            .route("/v1/keys/claim", post(keys::claim))
-            .route("/v1/keys/count", get(keys::count))
-            .route("/v1/envelopes", post(envelopes::send))
-            .route("/v1/mailbox", get(envelopes::mailbox))
-            .route("/v1/mailbox/ack", post(envelopes::ack))
-            .route("/v1/slots/{recipient}", delete(envelopes::delete_slot))
-            .route("/v1/ws", get(live::ws))
+        login
+            .merge(api)
+            .layer(middleware::from_fn_with_state(limits, ratelimit::global))
             .with_state(state),
     )
 }

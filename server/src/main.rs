@@ -2,6 +2,7 @@
 //! - `STAYA_DATABASE_URL` — обязательно, `postgres://user:password@host:port/db`;
 //! - `STAYA_DOMAIN` — обязательно, имя сервера для подписи входа (protocol §4.2);
 //! - `STAYA_INVITE_CODE` — код приглашения на регистрацию; без него регистрация открыта;
+//! - `STAYA_TRUST_PROXY` — `1`, если сервер за Caddy: IP для лимитов из `X-Forwarded-For`;
 //! - `STAYA_LISTEN` — адрес, по умолчанию `127.0.0.1:8080`;
 //! - `STAYA_LOG` — `error` | `warn` | `info` (по умолчанию) | `debug`.
 
@@ -40,6 +41,7 @@ async fn main() -> ExitCode {
     let config = Config {
         domain,
         invite_code: env("STAYA_INVITE_CODE"),
+        trust_proxy: env("STAYA_TRUST_PROXY").as_deref() == Some("1"),
     };
     if config.invite_code.is_none() {
         tracing::warn!("STAYA_INVITE_CODE is not set: registration is open");
@@ -78,9 +80,10 @@ async fn main() -> ExitCode {
         }
     };
     tracing::info!(%addr, "listening");
-    tokio::spawn(janitor(pool.clone()));
     let state = AppState::new(pool.clone(), config);
-    let served = axum::serve(listener, app(state))
+    tokio::spawn(janitor(pool.clone(), state.limits.clone()));
+    let service = app(state).into_make_service_with_connect_info::<SocketAddr>();
+    let served = axum::serve(listener, service)
         .with_graceful_shutdown(shutdown_signal())
         .await;
     pool.close();
@@ -97,10 +100,14 @@ async fn main() -> ExitCode {
 }
 
 /// Раз в 10 минут удаляет просроченное: challenge, сессии, сообщения и слоты.
-async fn janitor(pool: deadpool_postgres::Pool) {
+async fn janitor(
+    pool: deadpool_postgres::Pool,
+    limits: std::sync::Arc<staya_server::ratelimit::Limits>,
+) {
     let mut tick = tokio::time::interval(Duration::from_secs(600));
     loop {
         tick.tick().await;
+        limits.forget_full();
         if auth::purge_expired(&pool).await.is_err()
             || envelopes::purge_expired(&pool).await.is_err()
         {

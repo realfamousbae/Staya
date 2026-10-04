@@ -145,6 +145,7 @@ pub async fn setup(invite: Option<&str>) -> Option<(TestDb, Router)> {
         Config {
             domain: DOMAIN.into(),
             invite_code: invite.map(Into::into),
+            trust_proxy: false,
         },
     );
     let whoami = Router::new()
