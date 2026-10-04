@@ -35,7 +35,7 @@ http-body-util = "0.1.3"
 staya-core = { path = "../core" }
 tempfile = "3.27.0"
 # Клиент WebSocket для tests/live.rs; та же версия, что у axum.
-tokio-tungstenite = { version = "0.29.0", default-features = false, features = ["connect", "handshake"] }
+tokio-tungstenite = { version = "0.30.0", default-features = false, features = ["connect", "handshake"] }
 futures-util = { version = "0.3", default-features = false }
 
 [[bin]]
