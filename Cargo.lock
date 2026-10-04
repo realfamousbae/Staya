@@ -548,6 +548,9 @@ dependencies = [
  "staya-server",
  "tempfile",
  "tokio",
+ "tokio-postgres",
+ "tracing",
+ "tracing-subscriber",
  "ureq",
 ]
 

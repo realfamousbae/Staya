@@ -22,6 +22,10 @@ ureq = { version = "3.4.2", default-features = false }
 staya-server = { path = "../../server", features = ["dev"] }
 axum = { workspace = true }
 tokio = { workspace = true }
+# Сквозной тест с настоящим PostgreSQL (tests/e2e.rs).
+tokio-postgres = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
 
 [lints]
 workspace = true

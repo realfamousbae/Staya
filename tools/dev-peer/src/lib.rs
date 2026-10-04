@@ -5,7 +5,10 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use staya_core::api::{CoreEvent, InviteMethod, StayaCore};
 use staya_core::friends::Location;
-use staya_proto::api::{ClaimRequest, KeyCountResponse};
+use staya_proto::api::{
+    B64, ChallengeRequest, ChallengeResponse, ClaimRequest, KeyCountResponse, VerifyRequest,
+    VerifyResponse,
+};
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 
@@ -21,6 +24,8 @@ pub struct Peer {
     base: String,
     pub id: String,
     agent: ureq::Agent,
+    /// Токен сессии настоящего сервера; без него — dev-сервер (`Bearer <account_id>`).
+    token: Option<String>,
 }
 
 impl Peer {
@@ -43,6 +48,7 @@ impl Peer {
             base: base.trim_end_matches('/').to_owned(),
             id,
             agent,
+            token: None,
         })
     }
 
@@ -51,7 +57,45 @@ impl Peer {
     }
 
     fn auth(&self) -> String {
-        format!("Bearer {}", self.id)
+        format!("Bearer {}", self.token.as_deref().unwrap_or(&self.id))
+    }
+
+    /// Настоящий сервер: регистрация и вход по подписи (protocol §4.1–4.2).
+    /// `domain` — имя сервера, которое он ждёт в подписи входа.
+    pub fn login(&mut self, domain: &str) -> Result<(), Error> {
+        let register = self.core.register_request(None)?;
+        let r = self
+            .agent
+            .post(self.url("/v1/accounts"))
+            .header("Content-Type", "application/json")
+            .send(&register)?;
+        Self::check(r, "/v1/accounts")?;
+        let challenge = serde_json::to_string(&ChallengeRequest {
+            account_id: staya_proto::AccountId::from_b64(&self.id)?,
+        })?;
+        let r = self
+            .agent
+            .post(self.url("/v1/auth/challenge"))
+            .header("Content-Type", "application/json")
+            .send(&challenge)?;
+        let nonce: ChallengeResponse =
+            serde_json::from_str(&Self::check(r, "/v1/auth/challenge")?)?;
+        let signature = self
+            .core
+            .sign_auth(domain.to_owned(), nonce.nonce.0.clone())?;
+        let verify = serde_json::to_string(&VerifyRequest {
+            account_id: staya_proto::AccountId::from_b64(&self.id)?,
+            nonce: nonce.nonce,
+            signature: B64(signature),
+        })?;
+        let r = self
+            .agent
+            .post(self.url("/v1/auth/verify"))
+            .header("Content-Type", "application/json")
+            .send(&verify)?;
+        let session: VerifyResponse = serde_json::from_str(&Self::check(r, "/v1/auth/verify")?)?;
+        self.token = Some(base64_std(&session.token.0));
+        Ok(())
     }
 
     fn check(resp: ureq::http::Response<ureq::Body>, what: &str) -> Result<String, Error> {
@@ -173,6 +217,11 @@ impl Peer {
         self.flush()
     }
 
+    pub fn set_nick(&self, nick: &str) -> Result<(), Error> {
+        self.core.set_profile(nick.to_owned(), Vec::new())?;
+        self.flush()
+    }
+
     pub fn has_friends(&self) -> Result<bool, Error> {
         Ok(self.core.list_friends()?.iter().any(|f| f.active))
     }
@@ -213,4 +262,12 @@ impl Exchange {
             std::thread::sleep(Duration::from_secs(1));
         }
     }
+}
+
+fn base64_std(bytes: &[u8]) -> String {
+    // Тот же формат, что у B64 в JSON: стандартный алфавит с дополнением.
+    serde_json::to_value(B64(bytes.to_vec()))
+        .ok()
+        .and_then(|v| v.as_str().map(str::to_owned))
+        .unwrap_or_default()
 }
