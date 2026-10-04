@@ -7,7 +7,6 @@
 
 use std::net::SocketAddr;
 use std::process::ExitCode;
-use std::sync::Arc;
 use std::time::Duration;
 
 use staya_server::db;
@@ -38,10 +37,10 @@ async fn main() -> ExitCode {
         tracing::error!("STAYA_DOMAIN must be set to the server host name");
         return ExitCode::FAILURE;
     };
-    let config = Arc::new(Config {
+    let config = Config {
         domain,
         invite_code: env("STAYA_INVITE_CODE"),
-    });
+    };
     if config.invite_code.is_none() {
         tracing::warn!("STAYA_INVITE_CODE is not set: registration is open");
     }
@@ -80,10 +79,7 @@ async fn main() -> ExitCode {
     };
     tracing::info!(%addr, "listening");
     tokio::spawn(janitor(pool.clone()));
-    let state = AppState {
-        pool: pool.clone(),
-        config,
-    };
+    let state = AppState::new(pool.clone(), config);
     let served = axum::serve(listener, app(state))
         .with_graceful_shutdown(shutdown_signal())
         .await;

@@ -8,7 +8,7 @@ use axum::http::StatusCode;
 use staya_proto::AccountId;
 use staya_proto::api::{
     AckRequest, B64, EnvelopeKind, EnvelopeStatus, LocationSlot, MailboxResponse, QueuedControl,
-    SendRequest, SendResponse,
+    SendRequest, SendResponse, WsEvent,
 };
 use staya_proto::consts::{CONTROL_QUEUE_LIMIT, CONTROL_QUEUE_TTL, LOCATION_SLOT_TTL};
 
@@ -53,6 +53,7 @@ pub async fn send(
         .map(|r| r.get(0))
         .collect();
     let mut results = Vec::with_capacity(req.envelopes.len());
+    let mut live = Vec::new();
     for env in &req.envelopes {
         if !size_ok(env.kind, env.data.0.len()) {
             results.push(rejected(crate::mailbox::BAD_SIZE));
@@ -73,6 +74,13 @@ pub async fn send(
                 )
                 .await
                 .map_err(internal)?;
+                live.push((
+                    env.to,
+                    WsEvent::Location(LocationSlot {
+                        from: me,
+                        data: env.data.clone(),
+                    }),
+                ));
             }
             EnvelopeKind::Control => {
                 let queued: i64 = tx
@@ -87,17 +95,32 @@ pub async fn send(
                     results.push(rejected(QUEUE_FULL));
                     continue;
                 }
-                tx.execute(
-                    "INSERT INTO control_queue (recipient, sender, data) VALUES ($1, $2, $3)",
-                    &[&to, &me.0.as_slice(), &env.data.0],
-                )
-                .await
-                .map_err(internal)?;
+                let seq: i64 = tx
+                    .query_one(
+                        "INSERT INTO control_queue (recipient, sender, data) VALUES ($1, $2, $3)
+                         RETURNING seq",
+                        &[&to, &me.0.as_slice(), &env.data.0],
+                    )
+                    .await
+                    .map_err(internal)?
+                    .get(0);
+                live.push((
+                    env.to,
+                    WsEvent::Control(QueuedControl {
+                        seq,
+                        from: me,
+                        data: env.data.clone(),
+                    }),
+                ));
             }
         }
         results.push(EnvelopeStatus::Accepted);
     }
     tx.commit().await.map_err(internal)?;
+    // Только после записи: получатель не увидит того, чего нет в ящике.
+    for (to, event) in &live {
+        state.hub.notify(to, event);
+    }
     Ok(Json(SendResponse { results }))
 }
 

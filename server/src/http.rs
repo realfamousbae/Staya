@@ -17,7 +17,8 @@ use axum::{Json, Router};
 use deadpool_postgres::Pool;
 use serde::de::DeserializeOwned;
 
-use crate::{auth, envelopes, keys};
+use crate::live::Hub;
+use crate::{auth, envelopes, keys, live};
 
 /// Настройки сервера, не меняющиеся во время работы.
 pub struct Config {
@@ -31,6 +32,18 @@ pub struct Config {
 pub struct AppState {
     pub pool: Pool,
     pub config: Arc<Config>,
+    /// Подписки WebSocket (живая доставка).
+    pub hub: Arc<Hub>,
+}
+
+impl AppState {
+    pub fn new(pool: Pool, config: Config) -> Self {
+        Self {
+            pool,
+            config: Arc::new(config),
+            hub: Arc::default(),
+        }
+    }
 }
 
 pub fn app(state: AppState) -> Router {
@@ -47,6 +60,7 @@ pub fn app(state: AppState) -> Router {
             .route("/v1/mailbox", get(envelopes::mailbox))
             .route("/v1/mailbox/ack", post(envelopes::ack))
             .route("/v1/slots/{recipient}", delete(envelopes::delete_slot))
+            .route("/v1/ws", get(live::ws))
             .with_state(state),
     )
 }

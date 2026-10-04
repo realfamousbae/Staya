@@ -5,6 +5,7 @@ pub mod db;
 pub mod envelopes;
 pub mod http;
 pub mod keys;
+pub mod live;
 pub mod mailbox;
 
 #[cfg(feature = "dev")]

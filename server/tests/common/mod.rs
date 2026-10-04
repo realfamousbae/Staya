@@ -6,8 +6,6 @@
 
 #![allow(dead_code)]
 
-use std::sync::Arc;
-
 use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
@@ -142,13 +140,13 @@ impl Client {
 pub async fn setup(invite: Option<&str>) -> Option<(TestDb, Router)> {
     let t = TestDb::new().await?;
     db::migrate(&t.pool, db::MIGRATIONS).await.unwrap();
-    let state = AppState {
-        pool: t.pool.clone(),
-        config: Arc::new(Config {
+    let state = AppState::new(
+        t.pool.clone(),
+        Config {
             domain: DOMAIN.into(),
             invite_code: invite.map(Into::into),
-        }),
-    };
+        },
+    );
     let whoami = Router::new()
         .route(
             "/whoami",
