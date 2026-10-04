@@ -21,6 +21,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         SelfTest.runIfRequested()
         #endif
         LegacyCleanup.run()
+        // Здесь, а не в экране: при фоновом перезапуске по SLC или визиту сцены нет.
+        LocationEngine.shared.start()
         return true
     }
 }

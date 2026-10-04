@@ -36,6 +36,18 @@ final class AppCore {
         }
     }
 
+    /// Для фоновой работы без экрана (отправка позиции): открыть и дождаться.
+    /// Недоступная или испорченная база — `nil`, никакого сброса: его делает только
+    /// пользователь.
+    func openAndWait() async -> StayaCore? {
+        open()
+        while case .opening = state {
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        if case .open(let core, _) = state { return core }
+        return nil
+    }
+
     /// Удаляет базу и ключ и создаёт аккаунт заново. Друзей придётся добавить снова.
     func reset() {
         if case .opening = state { return }

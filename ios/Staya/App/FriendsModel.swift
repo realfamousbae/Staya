@@ -4,7 +4,7 @@ import StayaCore
 
 /// Друзья (задача 4.3): приглашения, принятие после подтверждения, код
 /// безопасности, живая синхронизация на экране. Сеть с ядром — через одну
-/// `SerialQueue` вместе с `LiveConnection`.
+/// общую `StayaNet.queue` вместе с `LiveConnection` и фоновой отправкой позиции.
 @MainActor
 @Observable
 final class FriendsModel {
@@ -36,14 +36,13 @@ final class FriendsModel {
     private var core: StayaCore?
     private var sync: CoreSync?
     private var live: LiveConnection?
-    private let queue = SerialQueue()
+    private var queue: SerialQueue { StayaNet.shared.queue }
 
     /// Приложение на экране и аккаунт готов: ключи, ящик, WebSocket.
     func start(core: StayaCore) {
         if self.core !== core {
             self.core = core
-            guard let client = try? StayaClient(core: core) else { return }
-            let sync = CoreSync(core: core, http: client)
+            guard let (client, sync) = StayaNet.shared.bind(core) else { return }
             self.sync = sync
             live = LiveConnection(
                 client: client, sync: sync, queue: queue,

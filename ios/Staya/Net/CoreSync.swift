@@ -54,9 +54,4 @@ struct CoreSync: Sendable {
         try await flush()
         return processed.events
     }
-
-    func share(_ location: Location) async throws {
-        try core.prepareLocationUpdate(location: location, now: now)
-        try await flush()
-    }
 }

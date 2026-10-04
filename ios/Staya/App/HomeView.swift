@@ -39,6 +39,7 @@ struct HomeView: View {
                     Button("Понятно") { model.message = nil }
                 }
             }
+            SharingSection(core: core)
             Section("Друзья") {
                 if model.friends.isEmpty {
                     Text("Пока никого. Покажи QR-код другу рядом или отправь ссылку.").foregroundStyle(.secondary)

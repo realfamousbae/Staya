@@ -110,8 +110,10 @@ enum SelfTest {
                 }
             }
             if try core.listFriends().contains(where: { $0.active }) {
-                let now = Int64(Date().timeIntervalSince1970)
-                try await sync.share(Location(latE7: mine.lat, lonE7: mine.lon, accuracyM: 10, timestamp: now))
+                // Тот же путь, что у движка геопозиции (4.5): замер → ядро → сервер.
+                let fix = Fix(latitude: Double(mine.lat) / 1e7, longitude: Double(mine.lon) / 1e7,
+                              accuracyM: 10, timestamp: Date())
+                _ = try await LocationSend.queue(core: core, sync: sync, fix: fix)
             }
             try await Task.sleep(for: .seconds(1))
         }

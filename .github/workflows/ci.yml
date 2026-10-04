@@ -95,6 +95,10 @@ jobs:
         run: |
           swiftc -swift-version 6 ios/Staya/Map/MapMath.swift ios/CoreTests/Map/main.swift -o "$RUNNER_TEMP/map"
           "$RUNNER_TEMP/map"
+      - name: Location policy (macOS host)
+        run: |
+          swiftc -swift-version 6 ios/Staya/Location/LocationPolicy.swift ios/CoreTests/Location/main.swift -o "$RUNNER_TEMP/loc"
+          "$RUNNER_TEMP/loc"
       # Для обмена через настоящий сервер: Docker на macOS-раннере нет.
       - name: PostgreSQL 18 (Homebrew)
         timeout-minutes: 15
