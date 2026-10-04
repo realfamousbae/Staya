@@ -35,6 +35,10 @@ struct OnboardingView: View {
                     .autocorrectionDisabled()
                     .lineLimit(1...4)
                 Button("Вставить") { link = UIPasteboard.general.string ?? link }
+                if case .invite = DeepLink.parse(link) {
+                    Text("Это приглашение: после создания аккаунта пригласивший станет твоим другом и будет видеть, где ты.")
+                        .font(.footnote)
+                }
             } header: {
                 Text("Приглашение или ссылка на сервер")
             } footer: {
@@ -88,6 +92,13 @@ struct OnboardingView: View {
             }
         }
         .navigationTitle("Staya")
+        // Ссылка, открытая извне до создания аккаунта, — в поле (без автоматического принятия).
+        .task(id: model.pendingLink) {
+            if let pending = model.pendingLink {
+                link = pending.uri
+                model.pendingLink = nil
+            }
+        }
         .onChange(of: photo) { _, item in
             Task {
                 guard let item, let data = try? await item.loadTransferable(type: Data.self),

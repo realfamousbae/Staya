@@ -25,6 +25,7 @@ struct Backoff {
 actor LiveConnection {
     private let client: StayaClient
     private let sync: CoreSync
+    private let queue: SerialQueue
     private let onEvents: @Sendable ([CoreEvent]) -> Void
     private let onError: @Sendable (Error) -> Void
     private var loop: Task<Void, Never>?
@@ -32,11 +33,13 @@ actor LiveConnection {
     init(
         client: StayaClient,
         sync: CoreSync,
+        queue: SerialQueue = SerialQueue(),
         onEvents: @escaping @Sendable ([CoreEvent]) -> Void,
         onError: @escaping @Sendable (Error) -> Void = { _ in }
     ) {
         self.client = client
         self.sync = sync
+        self.queue = queue
         self.onEvents = onEvents
         self.onError = onError
     }
@@ -60,11 +63,12 @@ actor LiveConnection {
                 socket.resume()
                 defer { socket.cancel(with: .normalClosure, reason: nil) }
                 do {
-                    onEvents(try await sync.sync())
+                    let sync = self.sync
+                    onEvents(try await queue.run { try await sync.sync() })
                     backoff.reset()
                     while !Task.isCancelled {
                         if case .string(let text) = try await socket.receive() {
-                            onEvents(try await sync.handleWsEvent(text))
+                            onEvents(try await queue.run { try await sync.handleWsEvent(text) })
                         }
                     }
                 } catch {

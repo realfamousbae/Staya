@@ -18,6 +18,8 @@ final class AppModel {
     private(set) var phase: Phase = .loading
     private(set) var busy = false
     var error: String?
+    /// Ссылка, открытая извне и ещё не показанная (онбординг или подтверждение).
+    var pendingLink: DeepLink?
 
     /// Пересчитать по ядру: есть привязка к серверу и ник — онбординг пройден.
     func refresh(core: StayaCore, accountId: String) {

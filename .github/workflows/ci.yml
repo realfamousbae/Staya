@@ -89,6 +89,10 @@ jobs:
           test "${PIPESTATUS[0]}" -eq 0
       - name: Server trust rule (macOS host, test certificates)
         run: scripts/test-ios-trust.sh
+      - name: Invite QR (macOS host)
+        run: |
+          swiftc -swift-version 6 ios/Staya/App/Qr.swift ios/CoreTests/Qr/main.swift -o "$RUNNER_TEMP/qr"
+          "$RUNNER_TEMP/qr"
       # Для обмена через настоящий сервер: Docker на macOS-раннере нет.
       - name: PostgreSQL 18 (Homebrew)
         timeout-minutes: 15

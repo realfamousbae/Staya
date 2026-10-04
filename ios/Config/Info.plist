@@ -8,6 +8,19 @@
 	</array>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Staya показывает твою позицию на карте и отправляет её выбранным друзьям в зашифрованном виде.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Камера нужна, чтобы отсканировать QR-код друга. Кадры никуда не сохраняются и не отправляются.</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>io.github.realfamousbae.staya</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>staya</string>
+			</array>
+		</dict>
+	</array>
 	<key>NSMotionUsageDescription</key>
 	<string>Staya реже включает геолокацию, когда ты не двигаешься, — так меньше расход батареи.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
