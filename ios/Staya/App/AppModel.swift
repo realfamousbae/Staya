@@ -87,6 +87,19 @@ final class AppModel {
         case noServer
     }
 
+    /// Временный сбой сети (обрыв при уходе в фон, отмена, нет связи, 5xx): живое
+    /// соединение и отправка повторяются сами — пользователю его не показываем.
+    nonisolated static func isTransient(_ error: Error) -> Bool {
+        switch error {
+        case is CancellationError, is URLError: return true
+        case StayaNetError.rateLimited: return true
+        case StayaNetError.status(let code, _): return code >= 500
+        default:
+            let domain = (error as NSError).domain
+            return domain == NSPOSIXErrorDomain || domain == NSURLErrorDomain
+        }
+    }
+
     nonisolated static func describe(_ error: Error) -> String {
         switch error {
         case OnboardingError.noServer:
@@ -103,6 +116,8 @@ final class AppModel {
             return "Не получилось разобрать ссылку. Проверь, что она скопирована целиком."
         case let urlError as URLError:
             return "Нет связи с сервером (\(urlError.code.rawValue)). Проверь адрес и интернет."
+        case let e where (e as NSError).domain == NSPOSIXErrorDomain:
+            return "Соединение с сервером прервалось. Попробуй ещё раз."
         default:
             return "Не получилось: \(error)"
         }

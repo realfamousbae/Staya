@@ -4,6 +4,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import io.github.realfamousbae.staya.net.CoreSync
+import io.github.realfamousbae.staya.net.HttpStatusException
 import io.github.realfamousbae.staya.net.InviteCodeRequiredException
 import io.github.realfamousbae.staya.net.Net
 import io.github.realfamousbae.staya.net.RateLimitedException
@@ -105,6 +106,17 @@ object AppModel {
     private class NoServer : Exception()
 
     fun describeError(e: Exception): String = describe(e)
+
+    /**
+     * Временный сбой сети (обрыв, нет связи, 429, 5xx): живое соединение и отправка
+     * повторяются сами — пользователю его не показываем.
+     */
+    fun isTransient(e: Exception): Boolean = when (e) {
+        is ServerKeyRejectedException, is InviteCodeRequiredException -> false
+        is HttpStatusException -> e.status >= 500
+        is IOException -> true
+        else -> false
+    }
 
     private fun describe(e: Exception): String = when (e) {
         is NoServer -> "Вставь приглашение друга или ссылку на сервер — или укажи сервер в «Дополнительно»."

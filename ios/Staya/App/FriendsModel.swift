@@ -56,7 +56,11 @@ final class FriendsModel {
                         }
                     }
                 },
-                onError: { error in Task { @MainActor in FriendsModel.shared.message = AppModel.describe(error) } }
+                onError: { error in
+                    // Обрывы при уходе в фон и пропадание сети LiveConnection переживает сама.
+                    guard !AppModel.isTransient(error) else { return }
+                    Task { @MainActor in FriendsModel.shared.message = AppModel.describe(error) }
+                }
             )
         }
         reload()

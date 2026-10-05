@@ -54,7 +54,7 @@ object FriendsModel {
                     return@execute
                 }
                 sync = s
-                live = LiveConnection(client, s, { events -> onEvents(core, events) }, { message = AppModel.describeError(it) }, worker)
+                live = LiveConnection(client, s, { events -> onEvents(core, events) }, { if (!AppModel.isTransient(it)) message = AppModel.describeError(it) }, worker)
             }
             reload()
             // Пополнить одноразовые ключи (их разбирают при добавлении) и повернуть fallback.
