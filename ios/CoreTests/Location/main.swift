@@ -26,6 +26,13 @@ check(LocationPolicy.toCore(Fix(latitude: 55, longitude: 37, accuracyM: 1e9, tim
 
 check(!"\(Fix(latitude: 55.7558, longitude: 37.6173, accuracyM: 5, timestamp: t))".contains("55.7"), "redacted")
 
+// Свежесть: давно сохранённая точка не уходит; часы, спешащие вперёд, не мешают.
+let fresh = Fix(latitude: 55, longitude: 37, accuracyM: 5, timestamp: t)
+check(LocationPolicy.isFresh(fresh, now: t.addingTimeInterval(600)), "10 minutes is fresh")
+check(!LocationPolicy.isFresh(fresh, now: t.addingTimeInterval(601)), "older than 10 minutes")
+check(!LocationPolicy.isFresh(fresh, now: t.addingTimeInterval(35 * 3600)), "35 hours old")
+check(LocationPolicy.isFresh(fresh, now: t.addingTimeInterval(-120)), "fix slightly in the future")
+
 check(LocationPolicy.shouldSend(now: t, lastSent: nil), "first")
 check(!LocationPolicy.shouldSend(now: t.addingTimeInterval(59.9), lastSent: t), "throttled")
 check(LocationPolicy.shouldSend(now: t.addingTimeInterval(60), lastSent: t), "after a minute")

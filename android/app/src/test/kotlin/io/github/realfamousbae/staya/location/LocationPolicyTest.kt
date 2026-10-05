@@ -40,6 +40,15 @@ class LocationPolicyTest {
     }
 
     @Test
+    fun staleFixesAreNotSent() {
+        val fix = Fix(55.0, 37.0, 5f, t)
+        assertTrue(LocationPolicy.isFresh(fix, t + 600_000))
+        assertFalse(LocationPolicy.isFresh(fix, t + 600_001))
+        assertFalse(LocationPolicy.isFresh(fix, t + 35 * 3_600_000L))
+        assertTrue(LocationPolicy.isFresh(fix, t - 120_000)) // часы спешат
+    }
+
+    @Test
     fun throttlesToOncePerMinute() {
         assertTrue(LocationPolicy.shouldSend(t, null))
         assertFalse(LocationPolicy.shouldSend(t + 59_999, t))
@@ -55,6 +64,7 @@ class LocationPolicyTest {
                 var now = t
                 val sender = LocationSender { now }
                 assertFalse(sender.onFix(core, null, Fix(55.0, 37.0, null, now))) // негодный замер
+                assertFalse(sender.onFix(core, null, Fix(55.0, 37.0, 5f, now - 3_600_000))) // старая точка
                 assertTrue(sender.onFix(core, null, Fix(55.0, 37.0, 5f, now)))
                 now += 10_000
                 assertFalse(sender.onFix(core, null, Fix(55.0, 37.0, 5f, now)))

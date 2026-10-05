@@ -44,6 +44,11 @@ struct SharingSection: View {
                             .foregroundStyle(freezeError ? .red : .secondary)
                     }
                 }
+                if engine.reducedAccuracy {
+                    Text("«Точная геопозиция» выключена — друзья видят тебя с точностью до нескольких километров.")
+                        .font(.footnote)
+                    settingsButton
+                }
                 switch engine.authorization {
                 case .authorizedAlways:
                     EmptyView()

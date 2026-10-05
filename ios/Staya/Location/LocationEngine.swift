@@ -21,6 +21,8 @@ final class LocationEngine: NSObject {
     private(set) var enabled: Bool
     private(set) var authorization: CLAuthorizationStatus = .notDetermined
     private(set) var continuousOn = false
+    /// «Точная геопозиция» выключена: iOS отдаёт точки с точностью в километры.
+    private(set) var reducedAccuracy = false
 
     private let manager = CLLocationManager()
     private let motion = CMMotionActivityManager()
@@ -34,6 +36,7 @@ final class LocationEngine: NSObject {
         super.init()
         manager.delegate = self
         authorization = manager.authorizationStatus
+        reducedAccuracy = manager.accuracyAuthorization == .reducedAccuracy
     }
 
     // MARK: Жизненный цикл
@@ -43,6 +46,20 @@ final class LocationEngine: NSObject {
     /// оставшийся от сборок с замерами этапа 1.
     func start() {
         if enabled { applyServices() } else { stopServices() }
+    }
+
+    /// Один свежий замер: при включении передачи, открытии приложения и смене
+    /// разрешений. Без него друзьям до следующего пробуждения SLC ушла бы
+    /// последняя сохранённая точка — она бывает давно устаревшей.
+    func refresh() {
+        guard enabled else { return }
+        switch manager.authorizationStatus {
+        case .authorizedAlways, .authorizedWhenInUse:
+            if !continuousOn { manager.desiredAccuracy = kCLLocationAccuracyHundredMeters }
+            manager.requestLocation()
+        default:
+            break
+        }
     }
 
     /// Явное «Делиться позицией».
@@ -58,6 +75,7 @@ final class LocationEngine: NSObject {
             await Self.resend(core: core)
         }
         applyServices()
+        refresh()
     }
 
     /// Выключение — режим призрака: друзья видят «скрыто», а не последнюю точку как текущую.
@@ -172,7 +190,8 @@ final class LocationEngine: NSObject {
     // MARK: Отправка
 
     private func handle(_ fix: Fix) {
-        guard enabled, LocationPolicy.toCore(fix) != nil, let fix = throttle.offer(fix, now: Date()) else { return }
+        guard enabled, LocationPolicy.toCore(fix) != nil, LocationPolicy.isFresh(fix, now: Date()),
+              let fix = throttle.offer(fix, now: Date()) else { return }
         send(fix)
     }
 
@@ -200,7 +219,7 @@ final class LocationEngine: NSObject {
 enum LocationSend {
     /// `true` — пакеты поставлены в очередь. Вызывать внутри `StayaNet.queue`.
     static func queue(core: StayaCore, sync: CoreSync?, fix: Fix) async throws -> Bool {
-        guard let p = LocationPolicy.toCore(fix) else { return false }
+        guard let p = LocationPolicy.toCore(fix), LocationPolicy.isFresh(fix, now: Date()) else { return false }
         let location = Location(latE7: p.latE7, lonE7: p.lonE7, accuracyM: p.accuracyM, timestamp: p.timestamp)
         try core.prepareLocationUpdate(location: location, now: Int64(Date().timeIntervalSince1970))
         try? await sync?.flush()
@@ -216,12 +235,19 @@ extension LocationEngine: CLLocationManagerDelegate {
     nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         MainActor.assumeIsolated {
             let status = self.manager.authorizationStatus
-            let changed = lastAuth != nil && lastAuth != status
+            let reduced = self.manager.accuracyAuthorization == .reducedAccuracy
+            // Колбэк приходит и при создании менеджера — без изменений.
+            let changed = lastAuth != nil && (lastAuth != status || reducedAccuracy != reduced)
             lastAuth = status
             authorization = status
+            reducedAccuracy = reduced
             // После «при использовании» — сразу «всегда»: без него фона не будет.
             if enabled, status == .authorizedWhenInUse { self.manager.requestAlwaysAuthorization() }
-            if changed, enabled { applyServices() }
+            if changed, enabled {
+                applyServices()
+                // Включили «Точную геопозицию» или «Всегда» — сразу новая точка.
+                refresh()
+            }
         }
     }
 

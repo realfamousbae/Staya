@@ -31,6 +31,14 @@ enum LocationPolicy {
         )
     }
 
+    /// Старше — не отправляем: iOS при включении может отдать давно сохранённую точку
+    /// (на iPhone автора пришла позиция 35-часовой давности с точностью ±5 км).
+    static let maxFixAge: TimeInterval = 10 * 60
+
+    static func isFresh(_ fix: Fix, now: Date) -> Bool {
+        now.timeIntervalSince(fix.timestamp) <= maxFixAge
+    }
+
     static func shouldSend(now: Date, lastSent: Date?) -> Bool {
         guard let lastSent else { return true }
         return now.timeIntervalSince(lastSent) >= minSendInterval || now < lastSent

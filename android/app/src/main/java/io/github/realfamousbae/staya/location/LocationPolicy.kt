@@ -37,6 +37,11 @@ object LocationPolicy {
         )
     }
 
+    /** Старше — не отправляем: система может отдать давно сохранённую точку. */
+    const val MAX_FIX_AGE_MS = 10 * 60_000L
+
+    fun isFresh(fix: Fix, nowMs: Long): Boolean = nowMs - fix.timeMs <= MAX_FIX_AGE_MS
+
     fun shouldSend(nowMs: Long, lastSentMs: Long?): Boolean =
         lastSentMs == null || nowMs - lastSentMs >= MIN_SEND_INTERVAL_MS || nowMs < lastSentMs
 }
@@ -58,6 +63,7 @@ class LocationSender(private val clock: () -> Long = System::currentTimeMillis) 
     fun onFix(core: StayaCore, sync: CoreSync?, fix: Fix): Boolean {
         val location = LocationPolicy.toCore(fix) ?: return false
         val now = clock()
+        if (!LocationPolicy.isFresh(fix, now)) return false
         if (!LocationPolicy.shouldSend(now, lastSentMs)) return false
         core.prepareLocationUpdate(location, now / 1000)
         lastSentMs = now

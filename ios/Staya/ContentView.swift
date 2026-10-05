@@ -17,6 +17,8 @@ struct ContentView: View {
         .onOpenURL { url in app.pendingLink = DeepLink.parse(url.absoluteString) }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active { friends.stop() }
+            // Открыли приложение — свежая точка друзьям (если передача включена).
+            if phase == .active { LocationEngine.shared.refresh() }
         }
     }
 
