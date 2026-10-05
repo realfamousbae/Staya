@@ -147,7 +147,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
       - name: Build, lint, unit tests
         working-directory: android
-        run: ./gradlew --no-daemon assembleDebug lintDebug testDebugUnitTest
+        # assembleRelease — без ключа (неподписанный): ловит поломки R8 до релиза.
+        run: ./gradlew --no-daemon assembleDebug assembleRelease lintDebug testDebugUnitTest
 
   # Keystore и ядро на настоящем Android (эмулятор x86_64; arm64-ядро идёт через
   # трансляцию ARM, которая есть в образах API 30+).
@@ -190,6 +191,17 @@ jobs:
       - name: Build app and test APKs
         working-directory: android
         run: ./gradlew --no-daemon assembleDebug assembleDebugAndroidTest
+      # Релиз с R8, подписанный отладочным ключом (он появился при сборке debug).
+      - name: Build release APK (debug-signed)
+        working-directory: android
+        env:
+          STAYA_KEYSTORE_PASSWORD: android
+          STAYA_KEY_ALIAS: androiddebugkey
+        run: |
+          KS="${ANDROID_USER_HOME:-$HOME/.android}/debug.keystore"
+          test -f "$KS" || KS="$(find "$HOME" -name debug.keystore -path '*android*' | head -1)"
+          test -f "$KS"
+          STAYA_KEYSTORE="$KS" ./gradlew --no-daemon assembleRelease
       - name: Build server and peer
         run: cargo build -p staya-server --bin staya-server && cargo build -p dev-peer
       - name: Enable KVM
@@ -221,7 +233,9 @@ jobs:
           arch: x86_64
           disable-animations: true
           working-directory: android
-          script: ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.server=http://10.0.2.2:8080 -Pandroid.testInstrumentationRunnerArguments.invite=${{ env.STAYA_INVITE_B64 }}
+          script: |
+            ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.server=http://10.0.2.2:8080 -Pandroid.testInstrumentationRunnerArguments.invite=${{ env.STAYA_INVITE_B64 }}
+            ../scripts/test-android-release-start.sh app/build/outputs/apk/release/app-release.apk
       - name: Peer got the app's location
         timeout-minutes: 2
         run: |

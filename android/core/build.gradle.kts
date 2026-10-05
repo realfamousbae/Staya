@@ -28,6 +28,8 @@ android {
 
     defaultConfig {
         minSdk = 29
+        // JNA и привязки UniFFI переживают минификацию релиза приложения.
+        consumerProguardFiles("consumer-rules.pro")
     }
 
     compileOptions {

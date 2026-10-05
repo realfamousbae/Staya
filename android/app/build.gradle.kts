@@ -12,8 +12,9 @@ android {
         applicationId = "io.github.realfamousbae.staya"
         minSdk = 29
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.1.0"
+        // Релиз (scripts/release.sh) передаёт версию из тега: -PstayaVersionName=0.2.0 -PstayaVersionCode=2.
+        versionCode = providers.gradleProperty("stayaVersionCode").orElse("1").get().toInt()
+        versionName = providers.gradleProperty("stayaVersionName").orElse("0.1.0").get()
 
         // Rust-ядро собирается только под arm64 (см. scripts/build-android-core.sh).
         ndk { abiFilters += "arm64-v8a" }
@@ -22,8 +23,25 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // Ключ подписи релиза — только на Mac автора (scripts/release-key.sh), путь и
+    // пароли — из окружения сборки (scripts/release.sh берёт пароль из связки ключей
+    // macOS). Без них релиз собирается неподписанным: CI и lint не нужен ключ.
+    val keystore = providers.environmentVariable("STAYA_KEYSTORE").orNull
+    signingConfigs {
+        if (keystore != null) {
+            create("release") {
+                storeFile = file(keystore)
+                storePassword = providers.environmentVariable("STAYA_KEYSTORE_PASSWORD").get()
+                // Свой псевдоним — только для проверки релиза в CI отладочным ключом.
+                keyAlias = providers.environmentVariable("STAYA_KEY_ALIAS").orElse("staya").get()
+                keyPassword = providers.environmentVariable("STAYA_KEYSTORE_PASSWORD").get()
+            }
+        }
+    }
+
     buildTypes {
         release {
+            if (keystore != null) signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
