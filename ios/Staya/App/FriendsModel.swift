@@ -12,7 +12,8 @@ final class FriendsModel {
         case showQr(uri: String, expiresAt: Date)
         case shareLink(String)
         case scan
-        case confirm(uri: String, info: InviteInfo)
+        /// `scanned` — получено камерой приложения: только тогда QR даёт «проверено» (§5.1).
+        case confirm(uri: String, info: InviteInfo, scanned: Bool)
         /// Карточка друга: точность, код безопасности, удаление (4.6).
         case friend(FriendView, code: String)
 
@@ -21,7 +22,7 @@ final class FriendsModel {
             case .showQr(let u, _): "qr" + u
             case .shareLink(let u): "link" + u
             case .scan: "scan"
-            case .confirm(let u, _): "confirm" + u
+            case .confirm(let u, _, _): "confirm" + u
             case .friend(let f, _): "friend" + f.accountId
             }
         }
@@ -93,7 +94,8 @@ final class FriendsModel {
     }
 
     /// Ссылка из камеры, буфера или другого приложения: только экран подтверждения.
-    func open(_ link: DeepLink) {
+    /// `scanned` — только для сканера QR в приложении.
+    func open(_ link: DeepLink, scanned: Bool = false) {
         guard let core else { return }
         guard case .invite(let uri) = link else {
             message = "Это ссылка на сервер, а не приглашение. Сервер выбирается один раз — при создании аккаунта."
@@ -105,19 +107,19 @@ final class FriendsModel {
                 message = "Этот друг на другом сервере (\(info.server)). Друзья должны быть на одном сервере."
                 return
             }
-            screen = .confirm(uri: uri, info: info)
+            screen = .confirm(uri: uri, info: info, scanned: scanned)
         } catch {
             message = "Не получилось разобрать приглашение. Проверь, что ссылка скопирована целиком."
         }
     }
 
     /// Явное «Добавить» на экране подтверждения.
-    func accept(_ uri: String) {
+    func accept(_ uri: String, scanned: Bool) {
         guard let sync else { return }
         busy = true
         Task {
             do {
-                try await queue.run { try await sync.accept(uri) }
+                try await queue.run { try await sync.accept(uri, scanned: scanned) }
                 screen = nil
                 message = "Запрос отправлен. Друг появится, когда его приложение будет на связи."
             } catch {

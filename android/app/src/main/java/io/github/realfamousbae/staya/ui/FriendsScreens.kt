@@ -226,7 +226,7 @@ private fun Scan() {
         Back()
         Text("Наведи камеру на QR-код друга", style = MaterialTheme.typography.titleLarge)
         if (granted) {
-            QrScanner(Modifier.fillMaxWidth().aspectRatio(1f)) { FriendsModel.open(it) }
+            QrScanner(Modifier.fillMaxWidth().aspectRatio(1f)) { FriendsModel.open(it, scanned = true) }
         } else {
             Text("Нужен доступ к камере. Кадры никуда не сохраняются и не отправляются.")
             Button(onClick = { ask.launch(Manifest.permission.CAMERA) }) { Text("Разрешить камеру") }
@@ -242,15 +242,16 @@ private fun Confirm(s: FriendsModel.Screen.Confirm) {
         Text("Этот человек будет видеть, где ты, пока ты не скроешь позицию или не удалишь его.")
         Text("Сервер: ${s.info.server}", style = MaterialTheme.typography.bodySmall)
         Text(
-            if (s.info.method == InviteMethod.QR) {
+            // Способ — как приглашение получено здесь, а не что написано в ссылке (§5.1).
+            if (s.scanned && s.info.method == InviteMethod.QR) {
                 "Код отсканирован при встрече — друг будет проверенным."
             } else {
-                "Приглашение по ссылке — сверьте потом код безопасности."
+                "Приглашение получено ссылкой — сверьте потом код безопасности."
             },
             style = MaterialTheme.typography.bodySmall,
         )
         Message()
-        Button(enabled = !FriendsModel.busy, onClick = { FriendsModel.accept(s.uri) }) { Text("Добавить") }
+        Button(enabled = !FriendsModel.busy, onClick = { FriendsModel.accept(s.uri, s.scanned) }) { Text("Добавить") }
         OutlinedButton(onClick = { FriendsModel.screen = FriendsModel.Screen.Home }) { Text("Отмена") }
     }
 }

@@ -163,6 +163,11 @@ impl App {
 }
 
 fn befriend(alice: &App, bob: &App, server: &mut JsonServer) {
+    befriend_via(alice, bob, server, true);
+}
+
+/// `scanned` — B получил QR камерой приложения (иначе — вставил или открыл ссылку).
+fn befriend_via(alice: &App, bob: &App, server: &mut JsonServer, scanned: bool) {
     let keys = alice
         .core
         .keys_to_publish(0, T0)
@@ -178,7 +183,7 @@ fn befriend(alice: &App, bob: &App, server: &mut JsonServer) {
     assert_eq!(info.server, "staya.test");
     assert!(info.server_pins.is_empty());
     bob.core
-        .accept_invite(uri, server.claim(&info.account_id), T0)
+        .accept_invite(uri, server.claim(&info.account_id), T0, scanned)
         .unwrap();
     bob.flush(server);
     assert!(
@@ -384,6 +389,23 @@ fn mode_changes_resend_the_last_own_fix() {
 }
 
 #[test]
+fn qr_invite_is_verified_only_when_scanned() {
+    // QR, отсканированный камерой, — проверенный друг с обеих сторон.
+    let mut server = JsonServer::default();
+    let (alice, bob) = (App::new(), App::new());
+    befriend_via(&alice, &bob, &mut server, true);
+    assert!(bob.core.list_friends().unwrap()[0].verified);
+    assert!(alice.core.list_friends().unwrap()[0].verified);
+
+    // То же приглашение с `m=q`, но вставленное или открытое ссылкой: `m` пишет
+    // пригласивший, поэтому принимающий не считает друга проверенным (§5.1).
+    let mut server = JsonServer::default();
+    let (alice, bob) = (App::new(), App::new());
+    befriend_via(&alice, &bob, &mut server, false);
+    assert!(!bob.core.list_friends().unwrap()[0].verified);
+}
+
+#[test]
 fn rejected_envelopes_are_retired_by_complete_send() {
     let mut server = JsonServer::default();
     let (alice, bob) = (App::new(), App::new());
@@ -535,7 +557,7 @@ fn account_is_bound_to_one_server() {
     friend.set_server("b.example".into(), vec![]).unwrap();
     let uri = friend.create_invite(InviteMethod::Qr, T0).unwrap();
     let claim = r#"{"key":{"key":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","signature":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"},"is_fallback":false}"#;
-    let r = core.accept_invite(uri, claim.into(), T0);
+    let r = core.accept_invite(uri, claim.into(), T0, false);
     assert!(matches!(r, Err(CoreError::ServerMismatch)), "{r:?}");
     // Новый аккаунт может взять сервер из приглашения.
     let (_d3, newbie) = fresh();

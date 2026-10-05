@@ -343,13 +343,20 @@ impl StayaCore {
     }
 
     /// Принимает приглашение; `claim_response_json` — ответ `POST /v1/keys/claim`.
+    /// `scanned` — приглашение получено камерой приложения (QR при встрече). Только
+    /// тогда `m=q` даёт «проверено»: `m` пишет пригласивший, и ссылка из
+    /// мессенджера или буфера могла бы выдать себя за QR (protocol §5.1).
     pub fn accept_invite(
         &self,
         uri: String,
         claim_response_json: String,
         now: i64,
+        scanned: bool,
     ) -> Result<(), CoreError> {
-        let invite = Invite::parse(&uri)?;
+        let mut invite = Invite::parse(&uri)?;
+        if !scanned {
+            invite.method = staya_proto::invite::InviteMethod::Link;
+        }
         let mut g = self.lock()?;
         let Inner {
             store,

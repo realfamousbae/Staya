@@ -129,7 +129,7 @@ private struct FriendsSheet: View {
         case .scan:
             Group {
                 if QrScanner.isAvailable {
-                    QrScanner { model.open($0) }.ignoresSafeArea()
+                    QrScanner { model.open($0, scanned: true) }.ignoresSafeArea()
                 } else {
                     ContentUnavailableView(
                         "Сканер недоступен",
@@ -139,16 +139,17 @@ private struct FriendsSheet: View {
                 }
             }
             .navigationTitle("QR-код друга")
-        case .confirm(let uri, let info):
+        case .confirm(let uri, let info, let scanned):
             Form {
                 Text("Этот человек будет видеть, где ты, пока ты не скроешь позицию или не удалишь его.")
                 LabeledContent("Сервер", value: info.server)
-                Text(info.method == .qr
+                // Способ — как приглашение получено здесь, а не что написано в ссылке (§5.1).
+                Text(scanned && info.method == .qr
                      ? "Код отсканирован при встрече — друг будет проверенным."
-                     : "Приглашение по ссылке — сверьте потом код безопасности.")
+                     : "Приглашение получено ссылкой — сверьте потом код безопасности.")
                     .font(.footnote)
                 if let message = model.message { Text(message).foregroundStyle(.red) }
-                Button("Добавить") { model.accept(uri) }.disabled(model.busy)
+                Button("Добавить") { model.accept(uri, scanned: scanned) }.disabled(model.busy)
             }
             .navigationTitle("Добавить друга?")
         case .friend(let friend, let code):

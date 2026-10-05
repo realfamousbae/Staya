@@ -18,13 +18,14 @@ struct CoreSync: Sendable {
         try core.markKeysPublished()
     }
 
-    func accept(_ uri: String) async throws {
+    /// `scanned` — приглашение получено камерой приложения (protocol §5.1).
+    func accept(_ uri: String, scanned: Bool = false) async throws {
         // Новый аккаунт берёт сервер из приглашения (protocol §5.3).
         _ = try core.setServerFromLink(uri: uri)
         let info = try core.parseInvite(uri: uri)
         let claim = String(decoding: try JSONEncoder().encode(["account_id": info.accountId]), as: UTF8.self)
         let claimed = try await http.post("/v1/keys/claim", claim)
-        try core.acceptInvite(uri: uri, claimResponseJson: claimed, now: now)
+        try core.acceptInvite(uri: uri, claimResponseJson: claimed, now: now, scanned: scanned)
         try await flush()
     }
 

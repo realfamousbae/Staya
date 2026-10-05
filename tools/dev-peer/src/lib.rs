@@ -234,7 +234,9 @@ impl Peer {
             account_id: staya_proto::AccountId::from_b64(&info.account_id)?,
         })?;
         let claimed = self.send_json("POST", "/v1/keys/claim", &claim)?;
-        self.core.accept_invite(uri.to_owned(), claimed, now())?;
+        // Приглашение пришло не камерой — «не проверено» (protocol §5.1).
+        self.core
+            .accept_invite(uri.to_owned(), claimed, now(), false)?;
         self.flush()
     }
 

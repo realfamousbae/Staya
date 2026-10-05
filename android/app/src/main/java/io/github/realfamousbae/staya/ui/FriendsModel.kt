@@ -26,7 +26,8 @@ object FriendsModel {
         data class ShowQr(val uri: String, val expiresAt: Long) : Screen
         data class ShareLink(val uri: String) : Screen
         data object Scan : Screen
-        data class Confirm(val uri: String, val info: InviteInfo) : Screen
+        /** `scanned` — получено камерой приложения: только тогда QR даёт «проверено» (§5.1). */
+        data class Confirm(val uri: String, val info: InviteInfo, val scanned: Boolean) : Screen
         /** Карточка друга: точность, код безопасности, удаление (4.6). */
         data class Friend(val friend: FriendView, val code: String) : Screen
     }
@@ -93,8 +94,11 @@ object FriendsModel {
         }
     }
 
-    /** Ссылка из камеры, буфера или другого приложения: только экран подтверждения. */
-    fun open(link: DeepLink) {
+    /**
+     * Ссылка из камеры, буфера или другого приложения: только экран подтверждения.
+     * `scanned` — только для сканера QR в приложении.
+     */
+    fun open(link: DeepLink, scanned: Boolean = false) {
         val core = core ?: return
         if (link !is DeepLink.Invite) {
             message = "Это ссылка на сервер, а не приглашение. Сервер выбирается один раз — при создании аккаунта."
@@ -107,7 +111,7 @@ object FriendsModel {
                     if (mine != null && mine != info.server) {
                         message = "Этот друг на другом сервере (${info.server}). Друзья должны быть на одном сервере."
                     } else {
-                        screen = Screen.Confirm(link.uri, info)
+                        screen = Screen.Confirm(link.uri, info, scanned)
                     }
                 }
                 .onFailure { message = "Не получилось разобрать приглашение. Проверь, что ссылка скопирована целиком." }
@@ -115,10 +119,10 @@ object FriendsModel {
     }
 
     /** Явное «Добавить» на экране подтверждения. */
-    fun accept(uri: String) {
+    fun accept(uri: String, scanned: Boolean) {
         busy = true
         worker.execute {
-            val error = runCatching { sync!!.accept(uri) }.exceptionOrNull()
+            val error = runCatching { sync!!.accept(uri, scanned) }.exceptionOrNull()
             busy = false
             if (error == null) {
                 screen = Screen.Home

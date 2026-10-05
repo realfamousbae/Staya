@@ -19,13 +19,14 @@ class CoreSync(private val core: StayaCore, private val http: StayaClient) {
         core.markKeysPublished()
     }
 
-    fun accept(uri: String) {
+    /** `scanned` — приглашение получено камерой приложения (protocol §5.1). */
+    fun accept(uri: String, scanned: Boolean = false) {
         // Новый аккаунт берёт сервер из приглашения (protocol §5.3).
         core.setServerFromLink(uri)
         val info = core.parseInvite(uri)
         // ID — base64url без выравнивания: экранировать в JSON нечего.
         val claimed = http.post("/v1/keys/claim", "{\"account_id\":\"${info.accountId}\"}")
-        core.acceptInvite(uri, claimed, now())
+        core.acceptInvite(uri, claimed, now(), scanned)
         flush()
     }
 
