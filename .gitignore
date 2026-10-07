@@ -50,3 +50,4 @@ core/fuzz/coverage/
 
 # Генератор стилей карты (tools/map-style)
 node_modules/
+*.profraw
