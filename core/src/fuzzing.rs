@@ -245,6 +245,7 @@ pub fn decode(data: &[u8]) {
     if let Ok(text) = std::str::from_utf8(data) {
         let _ = Invite::parse(text);
         let _ = ServerRef::parse_link(text);
+        let _ = staya_proto::invite::normalize_link(text);
     }
 }
 

@@ -48,6 +48,8 @@ pub struct ServerInfo {
     pub pins: Vec<Vec<u8>>,
     /// Ключ, запомненный при первом подключении (когда отпечатков нет).
     pub learned_pin: Option<Vec<u8>>,
+    /// Код регистрации на сервере (§4.1, §5.3): из ссылки или введённый вручную.
+    pub registration_code: Option<String>,
 }
 
 impl ServerInfo {
@@ -56,6 +58,7 @@ impl ServerInfo {
             host: b.server().host.clone(),
             pins: b.server().pins.iter().map(|p| p.to_vec()).collect(),
             learned_pin: b.learned().map(|p| p.to_vec()),
+            registration_code: b.server().code.clone(),
         }
     }
 }
@@ -329,7 +332,7 @@ impl StayaCore {
 
     /// Разбирает приглашение: чей ключ запросить через `POST /v1/keys/claim`.
     pub fn parse_invite(&self, uri: String) -> Result<InviteInfo, CoreError> {
-        let invite = Invite::parse(&uri)?;
+        let invite = Invite::parse(&normalized(&uri))?;
         let method = match invite.method {
             ProtoInviteMethod::Qr => InviteMethod::Qr,
             ProtoInviteMethod::Link => InviteMethod::Link,
@@ -353,7 +356,7 @@ impl StayaCore {
         now: i64,
         scanned: bool,
     ) -> Result<(), CoreError> {
-        let mut invite = Invite::parse(&uri)?;
+        let mut invite = Invite::parse(&normalized(&uri))?;
         if !scanned {
             invite.method = staya_proto::invite::InviteMethod::Link;
         }
@@ -392,13 +395,53 @@ impl StayaCore {
         bind(self, &ServerRef::new(&host, pins)?)
     }
 
-    /// То же по ссылке на сервер `staya://server?...` или приглашению `staya://add?...`.
+    /// То же по ссылке на сервер `staya://server?...` или приглашению `staya://add?...`
+    /// (и их https-виду, §5.4). Код регистрации из ссылки запоминается, если своего
+    /// ещё нет.
     pub fn set_server_from_link(&self, uri: String) -> Result<ServerInfo, CoreError> {
-        let server = match ServerRef::parse_link(&uri) {
-            Ok(s) => s,
-            Err(_) => Invite::parse(&uri)?.server,
-        };
-        bind(self, &server)
+        bind(self, &server_of_link(&uri)?)
+    }
+
+    /// Что в ссылке на сервер или приглашении: сервер, отпечатки, код — для экрана
+    /// подтверждения. Ничего не меняет.
+    pub fn parse_server_link(&self, uri: String) -> Result<ServerInfo, CoreError> {
+        let s = server_of_link(&uri)?;
+        Ok(ServerInfo {
+            host: s.host,
+            pins: s.pins.iter().map(|p| p.to_vec()).collect(),
+            learned_pin: None,
+            registration_code: s.code,
+        })
+    }
+
+    /// Заменить код регистрации кодом из ссылки на свой же сервер — только после
+    /// подтверждения пользователем (владелец сменил код, §5.3). Отпечатки и
+    /// запомненный ключ этим путём не меняются никогда. Другой сервер —
+    /// `ServerMismatch`, ссылка без кода — `Invalid`.
+    pub fn update_registration_code(&self, uri: String) -> Result<(), CoreError> {
+        let s = server_of_link(&uri)?;
+        let code = s
+            .code
+            .ok_or(CoreError::Invalid("no registration code in link"))?;
+        let mut g = self.lock()?;
+        let Inner { store, server, .. } = &mut *g;
+        let b = server.as_mut().ok_or(CoreError::NoServer)?;
+        if b.server().host != s.host {
+            return Err(CoreError::ServerMismatch);
+        }
+        b.set_code(store, &code)
+    }
+
+    /// Запомнить код регистрации, введённый вручную: он уйдёт в приглашения, и
+    /// друзьям не придётся вводить его (§5.3). Код, который нельзя положить в
+    /// ссылку, — `Invalid`.
+    pub fn set_registration_code(&self, code: String) -> Result<(), CoreError> {
+        let mut g = self.lock()?;
+        let Inner { store, server, .. } = &mut *g;
+        server
+            .as_mut()
+            .ok_or(CoreError::NoServer)?
+            .set_code(store, code.trim())
     }
 
     /// Отвязать аккаунт от сервера — только пока нет ни друзей, ни приглашений в
@@ -679,6 +722,21 @@ impl StayaCore {
         // с базой: дальше работать нельзя, приложение должно открыть ядро заново.
         self.inner.lock().map_err(|_| CoreError::Poisoned)
     }
+}
+
+/// Ссылка в виде `staya://…`; https-ссылка — по фрагменту (§5.4). Не ссылка Staya
+/// остаётся как есть и дальше не разберётся.
+fn normalized(uri: &str) -> String {
+    staya_proto::invite::normalize_link(uri).unwrap_or_else(|| uri.to_owned())
+}
+
+/// Сервер из ссылки на сервер или приглашения в любом виде.
+fn server_of_link(uri: &str) -> Result<ServerRef, CoreError> {
+    let uri = normalized(uri);
+    Ok(match ServerRef::parse_link(&uri) {
+        Ok(s) => s,
+        Err(_) => Invite::parse(&uri)?.server,
+    })
 }
 
 /// Привязка к серверу; при ошибке прежняя привязка остаётся как была.

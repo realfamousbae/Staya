@@ -566,6 +566,115 @@ fn account_is_bound_to_one_server() {
 }
 
 #[test]
+fn registration_code_travels_from_server_link_to_invites() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("staya.db").to_string_lossy().into_owned();
+    let owner = StayaCore::open(path.clone(), vec![7; 32]).unwrap();
+    // Ссылка на сервер в https-виде (protocol §5.4) — как придёт в мессенджере.
+    let web = staya_core::web_link("staya://server?v=1&s=a.example&c=beta-1".into()).unwrap();
+    let info = owner.set_server_from_link(web).unwrap();
+    assert_eq!(info.registration_code.as_deref(), Some("beta-1"));
+    // Переживает переоткрытие базы и уходит в приглашения.
+    drop(owner);
+    let owner = StayaCore::open(path, vec![7; 32]).unwrap();
+    let uri = owner.create_invite(InviteMethod::Link, T0).unwrap();
+    assert!(uri.contains("&c=beta-1&"), "{uri}");
+
+    // Новичок по приглашению получает и сервер, и код.
+    let (_d, newbie) = fresh();
+    let web = staya_core::web_link(uri.clone()).unwrap();
+    assert_eq!(staya_core::normalize_link(web.clone()), Some(uri));
+    let info = newbie.set_server_from_link(web.clone()).unwrap();
+    assert_eq!(info.registration_code.as_deref(), Some("beta-1"));
+    assert_eq!(newbie.parse_invite(web).unwrap().server, "a.example");
+
+    // Ни ссылка без кода, ни приглашение друга с другим кодом не меняют свой код:
+    // заменить можно только явно (`update_registration_code` после подтверждения).
+    owner
+        .set_server_from_link("staya://server?v=1&s=a.example".into())
+        .unwrap();
+    owner
+        .set_server_from_link("staya://server?v=1&s=a.example&c=other".into())
+        .unwrap();
+    assert_eq!(
+        owner
+            .server()
+            .unwrap()
+            .unwrap()
+            .registration_code
+            .as_deref(),
+        Some("beta-1")
+    );
+    let seen = owner
+        .parse_server_link("staya://server?v=1&s=a.example&c=beta-3".into())
+        .unwrap();
+    assert_eq!(
+        (seen.host.as_str(), seen.registration_code.as_deref()),
+        ("a.example", Some("beta-3"))
+    );
+    owner
+        .update_registration_code("staya://server?v=1&s=a.example&c=beta-3".into())
+        .unwrap();
+    assert_eq!(
+        owner
+            .server()
+            .unwrap()
+            .unwrap()
+            .registration_code
+            .as_deref(),
+        Some("beta-3")
+    );
+    assert!(matches!(
+        owner.update_registration_code("staya://server?v=1&s=b.example&c=x".into()),
+        Err(CoreError::ServerMismatch)
+    ));
+    assert!(matches!(
+        owner.update_registration_code("staya://server?v=1&s=a.example".into()),
+        Err(CoreError::Invalid(_))
+    ));
+    owner.set_registration_code(" beta-2 ".into()).unwrap();
+    assert_eq!(
+        owner
+            .server()
+            .unwrap()
+            .unwrap()
+            .registration_code
+            .as_deref(),
+        Some("beta-2")
+    );
+    // Код, который нельзя положить в ссылку, не сохраняется.
+    assert!(owner.set_registration_code("a b".into()).is_err());
+    let (_d, unbound) = fresh();
+    assert!(matches!(
+        unbound.set_registration_code("x".into()),
+        Err(CoreError::NoServer)
+    ));
+}
+
+#[test]
+fn code_update_never_touches_the_learned_key() {
+    let (_d, core) = fresh();
+    core.set_server("a.example".into(), vec![]).unwrap();
+    assert_eq!(
+        core.check_server_key(vec![1; 32]).unwrap(),
+        ServerTrust::Learned
+    );
+    // Чужая ссылка с отпечатками через путь обновления кода: ключ остаётся.
+    let link = format!(
+        "staya://server?v=1&s=a.example&p={}&c=new",
+        b64(&[2; 32])
+            .trim_end_matches('=')
+            .replace('+', "-")
+            .replace('/', "_")
+    );
+    core.update_registration_code(link).unwrap();
+    let info = core.server().unwrap().unwrap();
+    assert_eq!(info.learned_pin, Some(vec![1; 32]));
+    assert!(info.pins.is_empty());
+    assert_eq!(info.registration_code.as_deref(), Some("new"));
+}
+
+#[test]
 fn tofu_learns_once_and_never_silently_replaces() {
     let (_d, core) = fresh();
     assert!(matches!(

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Ссылка Staya — во фрагменте (#…), браузер его никуда не отправляет (protocol §5.4).
+     Сеть странице запрещена: ни запросов, ни сторонних ресурсов. Хэш скрипта сверяет
+     scripts/check-site.sh. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-0h7vXkR7oAK5IdVi4uK5Xl/V4NdU0rz/dm2uQEnmWEE='; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<title>Staya</title>
+<style>
+  :root { color-scheme: light dark; --bg: #fff; --fg: #1b1b1f; --muted: #5d5e66; --accent: #2b59c3; --on-accent: #fff; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #121316; --fg: #e4e2e6; --muted: #a9aab3; --accent: #9db8ff; --on-accent: #0b1c45; } }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 17px/1.5 -apple-system, system-ui, sans-serif; }
+  main { max-width: 32rem; margin: 0 auto; padding: 32px 16px; }
+  h1 { margin: 0 0 8px; font-size: 28px; }
+  p { margin: 12px 0; }
+  .muted { color: var(--muted); font-size: 15px; }
+  a.button, button { display: block; width: 100%; box-sizing: border-box; margin: 16px 0 8px; padding: 14px; border: 0; border-radius: 12px;
+    background: var(--accent); color: var(--on-accent); font: inherit; font-weight: 600; text-align: center; text-decoration: none; cursor: pointer; }
+  button.secondary { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+  [hidden] { display: none !important; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Staya</h1>
+  <p>Приложение, которое показывает друзьям, где ты, — и никому больше. Координаты шифруются на телефоне.</p>
+
+  <div id="link" hidden>
+    <p id="what"></p>
+    <a class="button" id="open" href="#">Открыть в Staya</a>
+    <button class="secondary" id="copy" type="button">Скопировать ссылку</button>
+    <p class="muted" id="copied" hidden>Скопировано. Вставь в Staya: «Вставить ссылку».</p>
+    <p class="muted">Если кнопка не открывает приложение, скопируй ссылку и вставь её в Staya.</p>
+  </div>
+  <p id="none" hidden>В ссылке нет приглашения. Попроси прислать её ещё раз целиком.</p>
+
+  <p class="muted">Нет Staya? <a href="https://github.com/realfamousbae/Staya/blob/main/docs/beta.md">Как установить</a>. После установки вернись к этой странице и нажми «Открыть в Staya».</p>
+  <p class="muted">Эта страница ничего не отправляет: приглашение — в части адреса после «#», её браузер не передаёт даже сюда.</p>
+</main>
+<script>
+(function () {
+  var frag = location.hash.slice(1);
+  var kind = /^add\?/.test(frag) ? "add" : /^server\?/.test(frag) ? "server" : null;
+  if (!kind) { document.getElementById("none").hidden = false; return; }
+  var uri = "staya://" + frag;
+  document.getElementById("what").textContent = kind === "add"
+    ? "Тебя приглашают в друзья. Staya покажет, кто и с какого сервера, и спросит подтверждение."
+    : "Ссылка на сервер Staya: с ней приложение подключится к серверу при создании аккаунта.";
+  document.getElementById("open").href = uri;
+  document.getElementById("copy").addEventListener("click", function () {
+    navigator.clipboard.writeText(uri).then(function () { document.getElementById("copied").hidden = false; });
+  });
+  document.getElementById("link").hidden = false;
+})();
+</script>
+</body>
+</html>

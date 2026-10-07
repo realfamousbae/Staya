@@ -43,6 +43,9 @@ jobs:
       # В коде приложений нет вывода в журнал (4.7): типы с координатами печатают их.
       - name: No log calls in app code
         run: scripts/check-no-logs.sh
+      # Страница https-ссылок: CSP-хэш скрипта, без сторонних ресурсов (protocol §5.4).
+      - name: Link page
+        run: scripts/check-site.sh
       - run: rustup show active-toolchain || rustup toolchain install
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - run: cargo fmt --all --check

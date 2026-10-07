@@ -1,8 +1,9 @@
 //! Приглашение в друзья: ссылка и QR (§5).
 //!
-//! `staya://add?v=1&s=<server>&p=<pins>&id=<account_id>&ik=<ik>&sk=<sk>&t=<token>&m=<q|l>`;
-//! `s` — сервер пригласившего (§5.3), `p` — необязательный отпечаток ключа TLS;
-//! двоичные значения — base64url без выравнивания.
+//! `staya://add?v=1&s=<server>&p=<pins>&c=<code>&id=<account_id>&ik=<ik>&sk=<sk>&t=<token>&m=<q|l>`;
+//! `s` — сервер пригласившего (§5.3), `p` — необязательный отпечаток ключа TLS,
+//! `c` — необязательный код регистрации на сервере (§5.3); двоичные значения —
+//! base64url без выравнивания. Та же ссылка в виде https — во фрагменте (§5.4).
 
 use std::fmt;
 
@@ -24,18 +25,71 @@ pub enum InviteMethod {
     Link,
 }
 
-/// Сервер аккаунта (§5.3): хост с необязательным портом и отпечаток ключа TLS.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// Сервер аккаунта (§5.3): хост с необязательным портом, отпечаток ключа TLS
+/// и код регистрации.
+#[derive(Clone, PartialEq, Eq)]
 pub struct ServerRef {
     /// `host` или `host:port`, только ASCII; порт 443 не пишется.
     pub host: String,
     /// SHA-256 от SubjectPublicKeyInfo ключей TLS сервера: основной и запасной.
     /// Пусто — TOFU (§5.3).
     pub pins: Vec<[u8; 32]>,
+    /// Код регистрации на закрытом сервере (§4.1), если его знает тот, кто
+    /// создал ссылку. Задаётся через [`ServerRef::with_code`].
+    pub code: Option<String>,
+}
+
+impl fmt::Debug for ServerRef {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Код регистрации пускает на сервер — в журналы не попадает.
+        f.debug_struct("ServerRef")
+            .field("host", &self.host)
+            .field("pins", &self.pins.len())
+            .field("code", &self.code.as_ref().map(|_| "<redacted>"))
+            .finish()
+    }
 }
 
 /// Отпечатков в приглашении не больше: основной и запасной (§5.3).
 pub const MAX_SERVER_PINS: usize = 2;
+
+/// Код регистрации в ссылке: `[A-Za-z0-9_-]`, не длиннее (§5.3). С ним худшее по
+/// длине приглашение ещё помещается в QR версии 13.
+pub const MAX_CODE_LEN: usize = 40;
+
+/// Код регистрации, который можно положить в ссылку как есть (§5.3).
+pub fn valid_code(code: &str) -> bool {
+    (1..=MAX_CODE_LEN).contains(&code.len())
+        && code
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+}
+
+/// Адрес статической страницы, которая превращает https-ссылку в `staya://` (§5.4).
+pub const WEB_BASE: &str = "https://realfamousbae.github.io/Staya/";
+
+/// `staya://add?…` / `staya://server?…` → `https://…/Staya/#add?…` (§5.4): такую
+/// ссылку мессенджеры делают нажимаемой. Другое — `None`.
+pub fn to_web_link(uri: &str) -> Option<String> {
+    let rest = uri.strip_prefix("staya://")?;
+    (rest.starts_with("add?") || rest.starts_with("server?")).then(|| format!("{WEB_BASE}#{rest}"))
+}
+
+/// Ссылка Staya в любом виде → `staya://add?…` или `staya://server?…` (§5.4).
+/// https-ссылка с любым хостом: всё приглашение — во фрагменте, хост ничего не
+/// добавляет. Пробелы по краям (вставка из буфера) отбрасываются. Не ссылка
+/// Staya — `None`.
+pub fn normalize_link(text: &str) -> Option<String> {
+    let text = text.trim();
+    let rest = if let Some(rest) = text.strip_prefix("staya://") {
+        rest
+    } else if text.starts_with("https://") {
+        text.split_once('#')?.1
+    } else {
+        return None;
+    };
+    (rest.starts_with("add?") || rest.starts_with("server?")).then(|| format!("staya://{rest}"))
+}
 
 impl ServerRef {
     pub fn new(host: &str, pins: Vec<[u8; 32]>) -> Result<Self, ProtoError> {
@@ -47,20 +101,39 @@ impl ServerRef {
         if pins.len() == 2 && pins[0] == pins[1] {
             return Err(ProtoError::Invalid("duplicate server pin"));
         }
-        Ok(Self { host, pins })
+        Ok(Self {
+            host,
+            pins,
+            code: None,
+        })
     }
 
-    /// `&p=<a>.<b>` или пусто.
-    fn pins_param(&self) -> String {
-        if self.pins.is_empty() {
-            return String::new();
+    /// Тот же сервер с кодом регистрации; код, который нельзя положить в ссылку, —
+    /// ошибка (§5.3).
+    pub fn with_code(mut self, code: Option<&str>) -> Result<Self, ProtoError> {
+        if code.is_some_and(|c| !valid_code(c)) {
+            return Err(ProtoError::Invalid("registration code"));
         }
-        let pins: Vec<String> = self
-            .pins
-            .iter()
-            .map(|p| URL_SAFE_NO_PAD.encode(p))
-            .collect();
-        format!("&p={}", pins.join("."))
+        self.code = code.map(str::to_owned);
+        Ok(self)
+    }
+
+    /// `&p=<a>.<b>&c=<code>` — что есть.
+    fn params(&self) -> String {
+        let mut out = String::new();
+        if !self.pins.is_empty() {
+            let pins: Vec<String> = self
+                .pins
+                .iter()
+                .map(|p| URL_SAFE_NO_PAD.encode(p))
+                .collect();
+            out = format!("&p={}", pins.join("."));
+        }
+        if let Some(c) = &self.code {
+            out.push_str("&c=");
+            out.push_str(c);
+        }
+        out
     }
 
     /// Ссылка на сервер `staya://server?v=1&s=…&p=…` (§5.3): для первого
@@ -69,7 +142,7 @@ impl ServerRef {
         format!(
             "{SERVER_PREFIX}v={VERSION}&s={}{}",
             self.host,
-            self.pins_param()
+            self.params()
         )
     }
 
@@ -77,7 +150,7 @@ impl ServerRef {
         let query = uri
             .strip_prefix(SERVER_PREFIX)
             .ok_or(ProtoError::Invalid("server link scheme"))?;
-        let (mut v, mut srv, mut pin) = (None, None, None);
+        let (mut v, mut srv, mut pin, mut code) = (None, None, None, None);
         for pair in query.split('&') {
             let (key, value) = pair
                 .split_once('=')
@@ -86,6 +159,7 @@ impl ServerRef {
                 "v" => &mut v,
                 "s" => &mut srv,
                 "p" => &mut pin,
+                "c" => &mut code,
                 _ => continue,
             };
             if slot.replace(value).is_some() {
@@ -98,7 +172,8 @@ impl ServerRef {
         Self::new(
             srv.ok_or(ProtoError::Invalid("server link host"))?,
             decode_pins(pin)?,
-        )
+        )?
+        .with_code(code)
     }
 
     /// Имя хоста по правилам DNS (буквы, цифры, `-`, `.`) или IPv4, плюс `:порт`.
@@ -160,9 +235,9 @@ impl Invite {
             InviteMethod::Qr => "q",
             InviteMethod::Link => "l",
         };
-        let pin = self.server.pins_param();
+        let params = self.server.params();
         format!(
-            "{PREFIX}v={VERSION}&s={}{pin}&id={}&ik={}&sk={}&t={}&m={m}",
+            "{PREFIX}v={VERSION}&s={}{params}&id={}&ik={}&sk={}&t={}&m={m}",
             self.server.host,
             self.account_id.to_b64(),
             URL_SAFE_NO_PAD.encode(self.ik),
@@ -175,8 +250,8 @@ impl Invite {
         let query = uri
             .strip_prefix(PREFIX)
             .ok_or(ProtoError::Invalid("invite scheme"))?;
-        let (mut v, mut srv, mut pin, mut id, mut ik, mut sk, mut t, mut m) =
-            (None, None, None, None, None, None, None, None);
+        let (mut v, mut srv, mut pin, mut code, mut id, mut ik, mut sk, mut t, mut m) =
+            (None, None, None, None, None, None, None, None, None);
         for pair in query.split('&') {
             let (key, value) = pair
                 .split_once('=')
@@ -185,6 +260,7 @@ impl Invite {
                 "v" => &mut v,
                 "s" => &mut srv,
                 "p" => &mut pin,
+                "c" => &mut code,
                 "id" => &mut id,
                 "ik" => &mut ik,
                 "sk" => &mut sk,
@@ -207,7 +283,8 @@ impl Invite {
         let server = ServerRef::new(
             srv.ok_or(ProtoError::Invalid("invite server"))?,
             decode_pins(pin)?,
-        )?;
+        )?
+        .with_code(code)?;
         Ok(Self {
             server,
             account_id: AccountId::from_b64(id.ok_or(ProtoError::Invalid("invite id"))?)?,
@@ -267,9 +344,11 @@ mod tests {
             pins in proptest::collection::vec(any::<[u8; 32]>(), 0..=2)
                 .prop_filter("distinct", |p| p.len() < 2 || p[0] != p[1]),
             host in "[a-z0-9]{1,20}(\\.[a-z0-9]{1,10}){0,3}(:[1-9][0-9]{0,3})?",
+            code in proptest::option::of("[A-Za-z0-9_-]{1,40}"),
         ) {
             let inv = Invite {
-                server: ServerRef::new(&host, pins).unwrap(),
+                server: ServerRef::new(&host, pins).unwrap()
+                    .with_code(code.as_deref()).unwrap(),
                 account_id: AccountId(id),
                 ik,
                 sk,
@@ -283,6 +362,8 @@ mod tests {
         fn parse_never_panics(s in "\\PC{0,200}") {
             let _ = Invite::parse(&s);
             let _ = Invite::parse(&format!("staya://add?{s}"));
+            let _ = normalize_link(&s);
+            let _ = normalize_link(&format!("https://x/#{s}"));
         }
     }
 
@@ -291,11 +372,69 @@ mod tests {
         // QR в байтовом режиме с коррекцией M: версия 13 вмещает 331 байт и
         // ещё уверенно сканируется с экрана телефона. С двумя отпечатками и
         // длинным именем сервера (как у sslip.io) — ~280 байт.
+        // С самым длинным кодом регистрации — до 331.
         let mut inv = invite(InviteMethod::Qr, vec![[9; 32], [8; 32]]);
-        inv.server =
-            ServerRef::new("255-255-255-255.sslip.io:8443", vec![[9; 32], [8; 32]]).unwrap();
+        inv.server = ServerRef::new("255-255-255-255.sslip.io:8443", vec![[9; 32], [8; 32]])
+            .unwrap()
+            .with_code(Some(&"c".repeat(MAX_CODE_LEN)))
+            .unwrap();
         let uri = inv.to_uri();
         assert!(uri.len() <= 331, "{} bytes: {uri}", uri.len());
+    }
+
+    #[test]
+    fn registration_code_is_carried() {
+        let mut inv = invite(InviteMethod::Link, vec![[7; 32]]);
+        inv.server = inv.server.with_code(Some("0a1b-C_d")).unwrap();
+        let uri = inv.to_uri();
+        assert!(uri.contains("&c=0a1b-C_d&id="), "{uri}");
+        assert_eq!(Invite::parse(&uri).unwrap(), inv);
+        let srv = ServerRef::new("a.example", vec![])
+            .unwrap()
+            .with_code(Some("beta"))
+            .unwrap();
+        assert_eq!(srv.to_link(), "staya://server?v=1&s=a.example&c=beta");
+        assert_eq!(ServerRef::parse_link(&srv.to_link()).unwrap(), srv);
+        assert!(!format!("{srv:?}").contains("beta"));
+        for bad in [
+            "",
+            "a b",
+            "a%20b",
+            "a&b",
+            "код",
+            &"c".repeat(MAX_CODE_LEN + 1),
+        ] {
+            assert!(!valid_code(bad), "{bad}");
+            let link = format!("staya://server?v=1&s=a.example&c={bad}");
+            assert!(ServerRef::parse_link(&link).is_err(), "{link}");
+        }
+        assert!(Invite::parse(&uri.replace("&c=0a1b-C_d", "&c=a+b")).is_err());
+        assert!(Invite::parse(&format!("{uri}&c=x")).is_err());
+    }
+
+    #[test]
+    fn web_links_carry_the_same_link_in_the_fragment() {
+        let uri = invite(InviteMethod::Link, vec![[7; 32]]).to_uri();
+        let web = to_web_link(&uri).unwrap();
+        assert_eq!(web, format!("{WEB_BASE}#{}", &uri["staya://".len()..]));
+        assert_eq!(normalize_link(&format!("  {web}\n")).unwrap(), uri);
+        assert_eq!(normalize_link(&uri).unwrap(), uri);
+        let srv = "staya://server?v=1&s=a.example";
+        assert_eq!(normalize_link(&to_web_link(srv).unwrap()).unwrap(), srv);
+        assert_eq!(
+            normalize_link("https://other.example/x#add?v=1").unwrap(),
+            "staya://add?v=1"
+        );
+        for not_ours in [
+            "https://example.com",
+            "https://example.com/#other?x",
+            "http://example.com/#add?v=1",
+            "staya://other?x",
+            "",
+        ] {
+            assert!(normalize_link(not_ours).is_none(), "{not_ours}");
+        }
+        assert!(to_web_link("https://example.com").is_none());
     }
 
     #[test]

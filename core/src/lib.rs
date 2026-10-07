@@ -54,6 +54,20 @@ pub fn core_version() -> String {
     env!("CARGO_PKG_VERSION").to_owned()
 }
 
+/// Ссылка Staya в любом виде (`staya://…` или https со ссылкой во фрагменте,
+/// protocol §5.4) → `staya://add?…` / `staya://server?…`; не ссылка Staya — `None`.
+/// Для разбора вставленного текста и открытых ссылок.
+#[uniffi::export]
+pub fn normalize_link(text: String) -> Option<String> {
+    staya_proto::invite::normalize_link(&text)
+}
+
+/// https-вид ссылки для отправки в мессенджер (§5.4); не ссылка Staya — `None`.
+#[uniffi::export]
+pub fn web_link(uri: String) -> Option<String> {
+    staya_proto::invite::to_web_link(&uri)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -18,6 +18,9 @@ struct Persisted {
     pins: Vec<[u8; 32]>,
     learned: Option<[u8; 32]>,
     session: Option<Session>,
+    /// Код регистрации (§5.3); в записях до него поля нет.
+    #[serde(default)]
+    code: Option<String>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -50,7 +53,9 @@ impl ServerBinding {
         };
         let p: Persisted = serde_json::from_slice(&bytes).map_err(|_| CoreError::Corrupted)?;
         Ok(Some(Self {
-            server: ServerRef::new(&p.host, p.pins).map_err(|_| CoreError::Corrupted)?,
+            server: ServerRef::new(&p.host, p.pins)
+                .and_then(|s| s.with_code(p.code.as_deref()))
+                .map_err(|_| CoreError::Corrupted)?,
             learned: p.learned,
             session: p.session,
         }))
@@ -62,6 +67,7 @@ impl ServerBinding {
             pins: self.server.pins.clone(),
             learned: self.learned,
             session: self.session.clone(),
+            code: self.server.code.clone(),
         };
         let bytes = Zeroizing::new(serde_json::to_vec(&p).map_err(|_| CoreError::Corrupted)?);
         store.put_secret(RECORD, &bytes)
@@ -77,7 +83,10 @@ impl ServerBinding {
 
     /// Привязывает аккаунт к серверу. Аккаунт живёт на одном сервере: другой
     /// сервер — ошибка. Тот же сервер с отпечатками, когда своих ещё нет
-    /// (был TOFU), — отпечатки принимаются, запомненный ключ забывается.
+    /// (был TOFU), — отпечатки принимаются, запомненный ключ забывается. Код
+    /// регистрации из ссылки запоминается, только если своего ещё нет: приглашение
+    /// друга не должно молча менять код в моих приглашениях (заменить —
+    /// [`ServerBinding::set_code`] после подтверждения пользователя).
     pub fn bind(
         store: &Store,
         current: Option<Self>,
@@ -95,6 +104,9 @@ impl ServerBinding {
         if binding.server.pins.is_empty() && !server.pins.is_empty() {
             binding.server.pins = server.pins.clone();
             binding.learned = None;
+        }
+        if binding.server.code.is_none() {
+            binding.server.code = server.code.clone();
         }
         binding.save(store)?;
         Ok(binding)
@@ -146,6 +158,12 @@ impl ServerBinding {
         expires_at: i64,
     ) -> Result<(), CoreError> {
         self.session = Some(Session { token, expires_at });
+        self.save(store)
+    }
+
+    /// Запомнить код регистрации, введённый вручную, — он уйдёт в приглашения.
+    pub fn set_code(&mut self, store: &Store, code: &str) -> Result<(), CoreError> {
+        self.server = self.server.clone().with_code(Some(code))?;
         self.save(store)
     }
 
