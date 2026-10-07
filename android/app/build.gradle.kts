@@ -74,8 +74,6 @@ dependencies {
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.material3)
-    implementation(libs.androidx.compose.ui.tooling.preview)
-    debugImplementation(libs.androidx.compose.ui.tooling)
     // HTTP и WebSocket к серверу Staya (задача 4.1b): проверка ключа сервера при
     // установке соединения, пул соединений, WebSocket. Без Google Play Services.
     implementation(libs.okhttp)
