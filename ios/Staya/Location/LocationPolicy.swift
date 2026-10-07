@@ -43,6 +43,15 @@ enum LocationPolicy {
         guard let lastSent else { return true }
         return now.timeIntervalSince(lastSent) >= minSendInterval || now < lastSent
     }
+
+    /// Ящик в фоне (4.9d) — не чаще: заявка в друзья по ссылке ждёт ответа сутки
+    /// (protocol §5), минуты задержки не важны, а лишние запросы тратят батарею.
+    static let minMailboxInterval: TimeInterval = 5 * 60
+
+    static func shouldPollMailbox(now: Date, lastPoll: Date?) -> Bool {
+        guard let lastPoll else { return true }
+        return now.timeIntervalSince(lastPoll) >= minMailboxInterval || now < lastPoll
+    }
 }
 
 /// Ограничение частоты с придержанной точкой: отброшенный по частоте замер

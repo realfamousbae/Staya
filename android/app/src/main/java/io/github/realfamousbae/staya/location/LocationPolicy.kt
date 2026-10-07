@@ -44,6 +44,15 @@ object LocationPolicy {
 
     fun shouldSend(nowMs: Long, lastSentMs: Long?): Boolean =
         lastSentMs == null || nowMs - lastSentMs >= MIN_SEND_INTERVAL_MS || nowMs < lastSentMs
+
+    /**
+     * Ящик в фоне (4.9d) — не чаще: заявка в друзья по ссылке ждёт ответа сутки
+     * (protocol §5), минуты задержки не важны, а лишние запросы тратят батарею.
+     */
+    const val MIN_MAILBOX_INTERVAL_MS = 5 * 60_000L
+
+    fun shouldPollMailbox(nowMs: Long, lastPollMs: Long?): Boolean =
+        lastPollMs == null || nowMs - lastPollMs >= MIN_MAILBOX_INTERVAL_MS || nowMs < lastPollMs
 }
 
 /**

@@ -52,4 +52,10 @@ check(throttle.offer(a, now: t.addingTimeInterval(50)) == nil, "throttled after 
 throttle.reset()
 check(throttle.offer(a, now: t.addingTimeInterval(51)) != nil, "reset on enable")
 
+// Ящик в фоне — не чаще раза в 5 минут; перевод часов назад не блокирует.
+check(LocationPolicy.shouldPollMailbox(now: t, lastPoll: nil), "first mailbox poll")
+check(!LocationPolicy.shouldPollMailbox(now: t.addingTimeInterval(299), lastPoll: t), "mailbox throttled")
+check(LocationPolicy.shouldPollMailbox(now: t.addingTimeInterval(300), lastPoll: t), "mailbox after 5 min")
+check(LocationPolicy.shouldPollMailbox(now: t.addingTimeInterval(-10), lastPoll: t), "clock moved back")
+
 print("location: ok")

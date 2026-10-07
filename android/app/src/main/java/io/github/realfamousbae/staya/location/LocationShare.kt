@@ -6,7 +6,10 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import androidx.core.content.edit
 import io.github.realfamousbae.staya.AppCore
+import io.github.realfamousbae.staya.net.CoreSync
 import io.github.realfamousbae.staya.net.Net
+import io.github.realfamousbae.staya.ui.AppModel
+import uniffi.staya_core.CoreEvent
 import uniffi.staya_core.StayaCore
 
 /**
@@ -102,7 +105,26 @@ object LocationShare {
         Net.worker.execute {
             if (!isEnabled(app)) return@execute
             val core = AppCore.openBlocking(app) ?: return@execute
-            runCatching { sender.onFix(core, Net.bind(core)?.second, fix) }
+            val sync = Net.bind(core)?.second
+            runCatching { sender.onFix(core, sync, fix) }
+            pollMailbox(core, sync)
         }
+    }
+
+    private var lastMailboxPollMs: Long? = null
+
+    /**
+     * Ящик на пробуждении геолокации, когда экрана нет (4.9d): заявка друга по моей
+     * ссылке обрабатывается, не дожидаясь, пока я открою приложение (protocol §5).
+     * На экране ящик ведёт WebSocket. Только из [Net.worker].
+     */
+    private fun pollMailbox(core: StayaCore, sync: CoreSync?) {
+        if (sync == null || AppModel.foreground) return
+        val now = System.currentTimeMillis()
+        if (!LocationPolicy.shouldPollMailbox(now, lastMailboxPollMs)) return
+        lastMailboxPollMs = now
+        val events = runCatching { sync.sync() }.getOrNull() ?: return
+        // Новому другу — сразу последний замер, как на экране.
+        if (events.any { it is CoreEvent.FriendAdded }) resend(core)
     }
 }

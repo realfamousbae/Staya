@@ -57,6 +57,15 @@ class LocationPolicyTest {
     }
 
     @Test
+    fun mailboxIsPolledAtMostEveryFiveMinutes() {
+        val t = 1_700_000_000_000L
+        assertTrue(LocationPolicy.shouldPollMailbox(t, null))
+        assertFalse(LocationPolicy.shouldPollMailbox(t + 299_000, t))
+        assertTrue(LocationPolicy.shouldPollMailbox(t + 300_000, t))
+        assertTrue("clock moved back", LocationPolicy.shouldPollMailbox(t - 10_000, t))
+    }
+
+    @Test
     fun senderQueuesIntoTheRealCoreAndThrottles() {
         val dir = Files.createTempDirectory("staya-loc").toFile()
         try {

@@ -27,6 +27,7 @@ final class LocationEngine: NSObject {
     private let manager = CLLocationManager()
     private let motion = CMMotionActivityManager()
     private var throttle = SendThrottle()
+    private var lastMailboxPoll: Date?
     private var lastAuth: CLAuthorizationStatus?
 
     private static let enabledKey = "location.sharing"
@@ -209,6 +210,24 @@ final class LocationEngine: NSObject {
             guard let core = await AppCore.shared.openAndWait() else { return }
             let sync = StayaNet.shared.bind(core)?.sync
             _ = try? await StayaNet.shared.queue.run { try await LocationSend.queue(core: core, sync: sync, fix: fix) }
+            await pollMailbox(core: core, sync: sync)
+        }
+    }
+
+    /// Ящик на пробуждении геолокации, когда экрана нет (4.9d): заявка друга по моей
+    /// ссылке обрабатывается, не дожидаясь, пока я открою приложение (protocol §5).
+    /// На экране ящик ведёт WebSocket.
+    private func pollMailbox(core: StayaCore, sync: CoreSync?) async {
+        guard let sync, UIApplication.shared.applicationState != .active,
+              LocationPolicy.shouldPollMailbox(now: Date(), lastPoll: lastMailboxPoll) else { return }
+        lastMailboxPoll = Date()
+        _ = try? await StayaNet.shared.queue.run {
+            let events = try await sync.sync()
+            // Новому другу — сразу последний замер, как на экране.
+            if events.contains(where: { if case .friendAdded = $0 { true } else { false } }) {
+                try core.prepareLocationUpdate(location: nil, now: Int64(Date().timeIntervalSince1970))
+                try? await sync.flush()
+            }
         }
     }
 }
