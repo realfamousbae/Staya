@@ -38,10 +38,20 @@ enum DeepLink: Equatable, Sendable {
         }
     }
 
+    /// `staya://…` или https-вид из мессенджера: ссылка во фрагменте, хост не важен
+    /// (protocol §5.4; то же правило, что `normalize_link` в ядре). `uri` — всегда `staya://`.
     static func parse(_ text: String?) -> DeepLink? {
         guard let t = text?.trimmingCharacters(in: .whitespacesAndNewlines) else { return nil }
-        if t.hasPrefix("staya://add?") { return .invite(t) }
-        if t.hasPrefix("staya://server?") { return .server(t) }
+        let rest: Substring
+        if t.hasPrefix("staya://") {
+            rest = t.dropFirst("staya://".count)
+        } else if t.hasPrefix("https://"), let hash = t.firstIndex(of: "#") {
+            rest = t[t.index(after: hash)...]
+        } else {
+            return nil
+        }
+        if rest.hasPrefix("add?") { return .invite("staya://" + rest) }
+        if rest.hasPrefix("server?") { return .server("staya://" + rest) }
         return nil
     }
 }

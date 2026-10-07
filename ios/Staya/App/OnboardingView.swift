@@ -2,13 +2,18 @@ import PhotosUI
 import StayaCore
 import SwiftUI
 
-/// Первый запуск (задача 4.2): откуда сервер, ник и аватар. Ключи создаются на
-/// устройстве ещё при открытии ядра; здесь — регистрация на сервере.
+/// Первый запуск (задачи 4.2, 4.9c): откуда сервер, ник и аватар. Ключи создаются на
+/// устройстве ещё при открытии ядра; здесь — регистрация на сервере. Проще всего —
+/// отсканировать QR друга при встрече: в нём сервер, отпечаток его ключа и код
+/// регистрации, а друг сразу становится проверенным (protocol §5.1).
 struct OnboardingView: View {
     let core: StayaCore
     let accountId: String
     @State private var model = AppModel.shared
     @State private var link = ""
+    /// Ссылка получена камерой приложения — только тогда QR даёт «проверено» (§5.1).
+    @State private var scanned = false
+    @State private var scanning = false
     @State private var manualHost = ""
     @State private var inviteCode = ""
     @State private var nick = ""
@@ -30,19 +35,47 @@ struct OnboardingView: View {
             }
 
             Section {
-                TextField("staya://…", text: $link, axis: .vertical)
+                if QrScanner.isAvailable {
+                    Button("Сканировать QR друга") { scanning = true }
+                }
+                Button("Вставить ссылку") {
+                    if let text = UIPasteboard.general.string {
+                        link = text
+                        scanned = false
+                    }
+                }
+                // Правка руками — уже не то, что прочитала камера.
+                TextField(
+                    "Ссылка-приглашение или ссылка на сервер",
+                    text: Binding(get: { link }, set: { link = $0; scanned = false }),
+                    axis: .vertical
+                )
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .lineLimit(1...4)
-                Button("Вставить") { link = UIPasteboard.general.string ?? link }
-                if case .invite = DeepLink.parse(link) {
-                    Text("Это приглашение: после создания аккаунта пригласивший станет твоим другом и будет видеть, где ты.")
+                switch DeepLink.parse(link) {
+                case .invite:
+                    Text(scanned
+                        ? "QR друга отсканирован: после создания аккаунта вы станете друзьями — сразу проверенными. Он будет видеть, где ты."
+                        : "Это приглашение: после создания аккаунта пригласивший станет твоим другом и будет видеть, где ты.")
                         .font(.footnote)
+                case .server:
+                    Text("Это ссылка на сервер — друзей добавишь потом.").font(.footnote)
+                case nil:
+                    EmptyView()
                 }
             } header: {
-                Text("Приглашение или ссылка на сервер")
+                Text("Приглашение друга")
             } footer: {
-                Text("Приглашение присылает друг. Ссылку на сервер — его владелец.")
+                Text("Рядом с другом — отсканируй QR из его Staya. Далеко — открой ссылку, которую он прислал, или вставь её сюда. Сервер и всё нужное для входа уже в приглашении.")
+            }
+
+            if model.needCode {
+                Section {
+                    SecureField("Код регистрации на сервере", text: $inviteCode)
+                } footer: {
+                    Text("Код даёт владелец сервера.")
+                }
             }
 
             Section {
@@ -51,8 +84,10 @@ struct OnboardingView: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .keyboardType(.URL)
-                    SecureField("Код приглашения на регистрацию", text: $inviteCode)
-                    Text("Код нужен только для закрытого сервера. Без отпечатка ключа сервер запоминается при первом подключении.")
+                    if !model.needCode {
+                        SecureField("Код регистрации на сервере", text: $inviteCode)
+                    }
+                    Text("Код нужен только для закрытого сервера, если его нет в ссылке. Без отпечатка ключа сервер запоминается при первом подключении.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -80,7 +115,7 @@ struct OnboardingView: View {
                 Button {
                     model.createAccount(
                         core: core, accountId: accountId, link: link, manualHost: manualHost,
-                        inviteCode: inviteCode, nick: nick, avatar: avatar
+                        inviteCode: inviteCode, nick: nick, avatar: avatar, scanned: scanned
                     )
                 } label: {
                     HStack {
@@ -96,7 +131,21 @@ struct OnboardingView: View {
         .task(id: model.pendingLink) {
             if let pending = model.pendingLink {
                 link = pending.uri
+                scanned = false
                 model.pendingLink = nil
+            }
+        }
+        .sheet(isPresented: $scanning) {
+            NavigationStack {
+                QrScanner { found in
+                    link = found.uri
+                    scanned = true
+                    scanning = false
+                }
+                .ignoresSafeArea()
+                .navigationTitle("QR-код друга")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Отмена") { scanning = false } } }
             }
         }
         .onChange(of: photo) { _, item in

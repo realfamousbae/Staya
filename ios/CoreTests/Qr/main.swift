@@ -2,7 +2,7 @@ import CoreImage
 import Foundation
 
 // QR приглашения тем же генератором, что в приложении (Qr.ciImage), → распознавание.
-// Худший случай длины: длинное имя sslip.io с портом и два отпечатка (~280 байт).
+// Худший случай длины: длинное имя sslip.io с портом, два отпечатка и код (~325 байт).
 
 func check(_ ok: Bool, _ name: String) {
     guard ok else { print("FAIL: \(name)"); exit(1) }
@@ -10,7 +10,8 @@ func check(_ ok: Bool, _ name: String) {
 }
 
 let b64 = String(repeating: "A", count: 43)
-let invite = "staya://add?v=1&s=255-255-255-255.sslip.io:8443&p=\(b64).\(b64)&id=\(String(repeating: "B", count: 22))"
+// Плюс самый длинный код регистрации (protocol §5.3: 40 символов).
+let invite = "staya://add?v=1&s=255-255-255-255.sslip.io:8443&p=\(b64).\(b64)&c=\(String(repeating: "D", count: 40))&id=\(String(repeating: "B", count: 22))"
     + "&ik=\(b64)&sk=\(b64)&t=\(String(repeating: "C", count: 22))&m=q"
 check(invite.utf8.count <= 331, "invite fits the 331-byte bound (\(invite.utf8.count) bytes)")
 
@@ -31,4 +32,9 @@ check(found == [invite], "decodes back to the same invite")
 check(DeepLink.parse(" \(invite) ") == .invite(invite), "invite link is classified")
 check(DeepLink.parse("staya://server?v=1&s=a.example") == .server("staya://server?v=1&s=a.example"), "server link")
 check(DeepLink.parse("https://example.com") == nil, "other links are ignored")
+// https-вид из мессенджера (protocol §5.4): ссылка во фрагменте, хост не важен.
+check(DeepLink.parse(" https://realfamousbae.github.io/Staya/#add?v=1&s=a.example\n") == .invite("staya://add?v=1&s=a.example"), "https invite link")
+check(DeepLink.parse("https://x.example/#server?v=1&s=a.example") == .server("staya://server?v=1&s=a.example"), "https server link")
+check(DeepLink.parse("https://example.com/#other?x") == nil, "https link without a Staya fragment")
+check(DeepLink.parse("http://example.com/#add?v=1") == nil, "plain http is ignored")
 print("Qr: all passed")

@@ -67,7 +67,7 @@ struct HomeView: View {
                     if let link = DeepLink.parse(UIPasteboard.general.string) {
                         model.open(link)
                     } else {
-                        model.message = "В буфере нет ссылки staya://. Скопируй приглашение целиком."
+                        model.message = "В буфере нет ссылки Staya. Скопируй приглашение целиком."
                     }
                 }
             }
@@ -122,8 +122,9 @@ private struct FriendsSheet: View {
             ShowQrView(uri: uri, expiresAt: expiresAt)
         case .shareLink(let uri):
             Form {
-                Text("Ссылка действует 24 часа. Открой Staya в течение суток, чтобы принять ответ друга. Добавленный по ссылке друг будет «не проверен», пока вы не сверите код безопасности.")
-                ShareLink("Отправить", item: uri)
+                Text("Ссылка действует 24 часа, сработает один раз и откроется прямо из мессенджера. В ней адрес сервера и код регистрации — другу ничего вводить не нужно. Если друг ответит, а у тебя выключено «Делиться позицией», открой Staya в течение суток. Добавленный по ссылке друг будет «не проверен», пока вы не сверите код безопасности.")
+                // https-вид (protocol §5.4): staya:// мессенджеры не делают нажимаемым.
+                ShareLink("Отправить", item: webLink(uri: uri) ?? uri)
             }
             .navigationTitle("Ссылка-приглашение")
         case .scan:
@@ -152,6 +153,12 @@ private struct FriendsSheet: View {
                 Button("Добавить") { model.accept(uri, scanned: scanned) }.disabled(model.busy)
             }
             .navigationTitle("Добавить друга?")
+        case .confirmServerCode(let uri, let host):
+            Form {
+                Text("В ссылке новый код регистрации для сервера \(host). Он уйдёт в твои приглашения, чтобы друзьям не нужно было его вводить. Обновляй, только если ссылку прислал владелец сервера: с чужим кодом друзья не смогут зарегистрироваться.")
+                Button("Обновить") { model.updateCode(uri) }
+            }
+            .navigationTitle("Обновить код?")
         case .friend(let friend, let code):
             FriendCard(initial: friend, code: code)
         }

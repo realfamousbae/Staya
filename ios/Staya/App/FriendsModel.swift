@@ -14,6 +14,8 @@ final class FriendsModel {
         case scan
         /// `scanned` — получено камерой приложения: только тогда QR даёт «проверено» (§5.1).
         case confirm(uri: String, info: InviteInfo, scanned: Bool)
+        /// Ссылка на свой сервер с новым кодом регистрации: заменить только по «Обновить».
+        case confirmServerCode(uri: String, host: String)
         /// Карточка друга: точность, код безопасности, удаление (4.6).
         case friend(FriendView, code: String)
 
@@ -23,6 +25,7 @@ final class FriendsModel {
             case .shareLink(let u): "link" + u
             case .scan: "scan"
             case .confirm(let u, _, _): "confirm" + u
+            case .confirmServerCode(let u, _): "code" + u
             case .friend(let f, _): "friend" + f.accountId
             }
         }
@@ -98,7 +101,7 @@ final class FriendsModel {
     func open(_ link: DeepLink, scanned: Bool = false) {
         guard let core else { return }
         guard case .invite(let uri) = link else {
-            message = "Это ссылка на сервер, а не приглашение. Сервер выбирается один раз — при создании аккаунта."
+            updateServer(core, link.uri)
             return
         }
         do {
@@ -111,6 +114,39 @@ final class FriendsModel {
         } catch {
             message = "Не получилось разобрать приглашение. Проверь, что ссылка скопирована целиком."
         }
+    }
+
+    /// Ссылка на сервер после онбординга: её может открыть любая страница, поэтому
+    /// ничего не меняется без подтверждения, а подтверждённым путём — только код
+    /// регистрации, не отпечатки (protocol §5.3).
+    private func updateServer(_ core: StayaCore, _ uri: String) {
+        guard let info = try? core.parseServerLink(uri: uri) else {
+            message = "Не получилось разобрать ссылку. Проверь, что она скопирована целиком."
+            return
+        }
+        guard let mine = try? core.server() else {
+            message = "Нет привязки к серверу."
+            return
+        }
+        if mine.host != info.host {
+            message = "Это ссылка на другой сервер. Аккаунт живёт на одном сервере — его выбирают при создании."
+        } else if info.registrationCode == nil || info.registrationCode == mine.registrationCode {
+            message = "Это ссылка на твой сервер — менять ничего не нужно."
+        } else {
+            screen = .confirmServerCode(uri: uri, host: info.host)
+        }
+    }
+
+    /// «Обновить» на экране подтверждения кода.
+    func updateCode(_ uri: String) {
+        guard let core else { return }
+        do {
+            try core.updateRegistrationCode(uri: uri)
+            message = "Код обновлён: друзья по твоим приглашениям зарегистрируются без кода."
+        } catch {
+            message = AppModel.describe(error)
+        }
+        screen = nil
     }
 
     /// Явное «Добавить» на экране подтверждения.
