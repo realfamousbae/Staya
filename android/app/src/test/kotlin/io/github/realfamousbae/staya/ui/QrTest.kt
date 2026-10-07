@@ -17,13 +17,14 @@ class QrTest {
         val path = Files.createTempDirectory("staya").resolve("staya.db").toString()
         return StayaCore.open(path, ByteArray(32) { 3 }).use { core ->
             core.setServer(host, pins)
+            core.setRegistrationCode("c".repeat(40)) // самый длинный код (protocol §5.3)
             core.createInvite(InviteMethod.QR, 1_700_000_000)
         }
     }
 
     @Test
     fun realInviteRoundTripsThroughQr() {
-        // Худший случай: длинное имя sslip.io с портом и два отпечатка.
+        // Худший случай: длинное имя sslip.io с портом, два отпечатка и код регистрации.
         val uri = invite("255-255-255-255.sslip.io:8443", listOf(ByteArray(32) { 1 }, ByteArray(32) { 2 }))
         val qr = Encoder.encode(uri, ErrorCorrectionLevel.M)
         assertTrue("QR version ${qr.version.versionNumber} for ${uri.length} bytes", qr.version.versionNumber <= 13)
@@ -43,6 +44,12 @@ class QrTest {
     @Test
     fun deepLinksAreClassified() {
         assertTrue(DeepLink.parse(" staya://server?v=1&s=a.example ") is DeepLink.Server)
+        // https-вид из мессенджера (protocol §5.4) приводится к staya://.
+        assertEquals(
+            DeepLink.Invite("staya://add?v=1&s=a.example"),
+            DeepLink.parse("https://realfamousbae.github.io/Staya/#add?v=1&s=a.example"),
+        )
+        assertNull(DeepLink.parse("https://example.com/#other"))
         assertNull(DeepLink.parse("https://example.com"))
         assertNull(DeepLink.parse(null))
         assertNull(DeepLink.parse("staya://other?x"))

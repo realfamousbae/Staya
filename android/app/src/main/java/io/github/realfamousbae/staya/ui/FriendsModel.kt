@@ -28,6 +28,8 @@ object FriendsModel {
         data object Scan : Screen
         /** `scanned` — получено камерой приложения: только тогда QR даёт «проверено» (§5.1). */
         data class Confirm(val uri: String, val info: InviteInfo, val scanned: Boolean) : Screen
+        /** Ссылка на свой сервер с новым кодом регистрации: заменить только по «Обновить». */
+        data class ConfirmServerCode(val uri: String, val host: String) : Screen
         /** Карточка друга: точность, код безопасности, удаление (4.6). */
         data class Friend(val friend: FriendView, val code: String) : Screen
     }
@@ -100,8 +102,8 @@ object FriendsModel {
      */
     fun open(link: DeepLink, scanned: Boolean = false) {
         val core = core ?: return
-        if (link !is DeepLink.Invite) {
-            message = "Это ссылка на сервер, а не приглашение. Сервер выбирается один раз — при создании аккаунта."
+        if (link is DeepLink.Server) {
+            updateServer(core, link)
             return
         }
         worker.execute {
@@ -115,6 +117,40 @@ object FriendsModel {
                     }
                 }
                 .onFailure { message = "Не получилось разобрать приглашение. Проверь, что ссылка скопирована целиком." }
+        }
+    }
+
+    /**
+     * Ссылка на сервер после онбординга: её может открыть любая страница, поэтому
+     * ничего не меняется без подтверждения, а подтверждённым путём — только код
+     * регистрации, не отпечатки (protocol §5.3).
+     */
+    private fun updateServer(core: StayaCore, link: DeepLink) {
+        worker.execute {
+            val info = runCatching { core.parseServerLink(link.uri) }.getOrElse {
+                message = "Не получилось разобрать ссылку. Проверь, что она скопирована целиком."
+                return@execute
+            }
+            val mine = runCatching { core.server() }.getOrNull()
+            when {
+                mine == null -> message = "Нет привязки к серверу."
+                mine.host != info.host -> message = "Это ссылка на другой сервер. Аккаунт живёт на одном сервере — его выбирают при создании."
+                info.registrationCode == null || info.registrationCode == mine.registrationCode ->
+                    message = "Это ссылка на твой сервер — менять ничего не нужно."
+                else -> screen = Screen.ConfirmServerCode(link.uri, info.host)
+            }
+        }
+    }
+
+    /** «Обновить» на экране подтверждения кода. */
+    fun updateCode(uri: String) {
+        val core = core ?: return
+        worker.execute {
+            message = runCatching { core.updateRegistrationCode(uri) }.fold(
+                { "Код обновлён: друзья по твоим приглашениям зарегистрируются без кода." },
+                { AppModel.describeError(it as Exception) },
+            )
+            screen = Screen.Home
         }
     }
 

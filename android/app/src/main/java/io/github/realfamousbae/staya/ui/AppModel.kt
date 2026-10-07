@@ -37,6 +37,10 @@ object AppModel {
     /** Приложение на экране (onResume/onPause). */
     var foreground by mutableStateOf(false)
 
+    /** Сервер ответил «нужен код регистрации»: онбординг сразу показывает поле. */
+    var needCode by mutableStateOf(false)
+        private set
+
     /** Ссылка, открытая извне и ещё не показанная (онбординг или подтверждение). */
     var pendingLink by mutableStateOf<DeepLink?>(null)
 
@@ -58,11 +62,12 @@ object AppModel {
         inviteCode: String,
         nick: String,
         avatar: ByteArray?,
+        scanned: Boolean,
     ) {
         busy = true
         error = null
         worker.execute {
-            val message = onboard(core, link, manualHost, inviteCode, nick, avatar)
+            val message = onboard(core, link, manualHost, inviteCode, nick, avatar, scanned)
             busy = false
             error = message
             if (message == null) refresh(core, accountId)
@@ -71,7 +76,10 @@ object AppModel {
 
     /**
      * Онбординг без UI (тестируется на JVM): `null` — готово, иначе сообщение для
-     * пользователя. `client` — для тестов (свой TLS); по умолчанию — сервер из привязки.
+     * пользователя. `scanned` — приглашение отсканировано камерой приложения (§5.1).
+     * Код регистрации — введённый вручную, иначе из ссылки (protocol §5.3); принятый
+     * сервером код запоминается и уходит в приглашения. `client` — для тестов (свой
+     * TLS); по умолчанию — сервер из привязки.
      */
     internal fun onboard(
         core: StayaCore,
@@ -80,9 +88,10 @@ object AppModel {
         inviteCode: String,
         nick: String,
         avatar: ByteArray?,
+        scanned: Boolean = false,
         client: (StayaCore, () -> String?) -> StayaClient = { c, code -> StayaClient(c, inviteCode = code) },
     ): String? {
-        val l = link.trim()
+        val l = DeepLink.parse(link)?.uri ?: link.trim()
         val host = manualHost.trim()
         val code = inviteCode.trim().ifEmpty { null }
         return try {
@@ -92,11 +101,15 @@ object AppModel {
                 else -> throw NoServer()
             }
             core.setProfile(nick.trim(), avatar ?: ByteArray(0))
-            val sync = CoreSync(core, client(core) { code })
+            val sync = CoreSync(core, client(core) { code ?: core.server()?.registrationCode })
             sync.publishKeys()
-            if (l.startsWith("staya://add?")) sync.accept(l)
+            // Сервер принял код — друзьям по моим приглашениям вводить его не придётся.
+            if (code != null) runCatching { core.setRegistrationCode(code) }
+            needCode = false
+            if (l.startsWith("staya://add?")) sync.accept(l, scanned)
             null
         } catch (e: Exception) {
+            needCode = e is InviteCodeRequiredException
             // Пока друзей нет, неверный адрес можно исправить и попробовать снова.
             runCatching { core.resetServer() }
             describe(e)
@@ -119,8 +132,8 @@ object AppModel {
     }
 
     private fun describe(e: Exception): String = when (e) {
-        is NoServer -> "Вставь приглашение друга или ссылку на сервер — или укажи сервер в «Дополнительно»."
-        is InviteCodeRequiredException -> "Этот сервер закрытый: нужен код приглашения на регистрацию. Его даёт владелец сервера."
+        is NoServer -> "Отсканируй QR друга, вставь его приглашение или ссылку на сервер — или укажи сервер в «Дополнительно»."
+        is InviteCodeRequiredException -> "Этот сервер закрытый: нужен код регистрации. Впиши его ниже — его даёт владелец сервера."
         is ServerKeyRejectedException -> "Ключ сервера не совпал с ожидаемым. Возможно, соединение перехватывают — не продолжай и спроси у того, кто дал ссылку."
         is RateLimitedException -> "Сервер просит подождать. Попробуй через минуту."
         is CoreException.ServerMismatch -> "Этот аккаунт уже привязан к другому серверу. Друзья должны быть на одном сервере."

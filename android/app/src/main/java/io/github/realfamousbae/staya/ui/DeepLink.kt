@@ -1,6 +1,11 @@
 package io.github.realfamousbae.staya.ui
 
-/** Ссылка, открытая в приложении: из камеры, буфера или другого приложения. */
+import uniffi.staya_core.normalizeLink
+
+/**
+ * Ссылка, открытая в приложении: из камеры, буфера или другого приложения.
+ * `uri` — всегда `staya://…`: https-вид из мессенджера (protocol §5.4) приводит ядро.
+ */
 sealed interface DeepLink {
     val uri: String
 
@@ -12,7 +17,7 @@ sealed interface DeepLink {
 
     companion object {
         fun parse(text: String?): DeepLink? {
-            val t = text?.trim() ?: return null
+            val t = normalizeLink(text ?: return null) ?: return null
             return when {
                 t.startsWith("staya://add?") -> Invite(t)
                 t.startsWith("staya://server?") -> Server(t)

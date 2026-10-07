@@ -66,6 +66,7 @@ fun FriendsScreen(core: StayaCore, nick: String, server: String) {
         is FriendsModel.Screen.ShareLink -> ShareLink(s.uri)
         FriendsModel.Screen.Scan -> Scan()
         is FriendsModel.Screen.Confirm -> Confirm(s)
+        is FriendsModel.Screen.ConfirmServerCode -> ConfirmServerCode(s)
         is FriendsModel.Screen.Friend -> FriendCard(s.friend, s.code)
     }
 }
@@ -121,7 +122,7 @@ private fun FriendsHome(core: StayaCore, nick: String, server: String) {
                         ?.getItemAt(0)?.coerceToText(context)?.toString()
                     val link = DeepLink.parse(text)
                     if (link == null) {
-                        FriendsModel.message = "В буфере нет ссылки staya://. Скопируй приглашение целиком."
+                        FriendsModel.message = "В буфере нет ссылки Staya. Скопируй приглашение целиком."
                     } else {
                         FriendsModel.open(link)
                     }
@@ -203,11 +204,15 @@ private fun ShareLink(uri: String) {
         Back()
         Text("Ссылка-приглашение", style = MaterialTheme.typography.titleLarge)
         Text(
-            "Ссылка действует 24 часа. Открой Staya в течение суток, чтобы принять ответ друга. " +
+            "Ссылка действует 24 часа, сработает один раз и откроется прямо из мессенджера. В ней адрес сервера " +
+                "и код регистрации — другу ничего вводить не нужно. Если друг ответит, а у тебя выключено " +
+                "«Делиться позицией», открой Staya в течение суток. " +
                 "Добавленный по ссылке друг будет «не проверен», пока вы не сверите код безопасности.",
         )
         Button(onClick = {
-            val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, uri)
+            // https-вид (protocol §5.4): staya:// мессенджеры не делают нажимаемым.
+            val text = uniffi.staya_core.webLink(uri) ?: uri
+            val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
             context.startActivity(Intent.createChooser(send, "Отправить приглашение"))
         }) { Text("Отправить") }
     }
@@ -252,6 +257,21 @@ private fun Confirm(s: FriendsModel.Screen.Confirm) {
         )
         Message()
         Button(enabled = !FriendsModel.busy, onClick = { FriendsModel.accept(s.uri, s.scanned) }) { Text("Добавить") }
+        OutlinedButton(onClick = { FriendsModel.screen = FriendsModel.Screen.Home }) { Text("Отмена") }
+    }
+}
+
+@Composable
+private fun ConfirmServerCode(s: FriendsModel.Screen.ConfirmServerCode) {
+    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Back()
+        Text("Обновить код регистрации?", style = MaterialTheme.typography.titleLarge)
+        Text(
+            "В ссылке новый код регистрации для сервера ${s.host}. Он уйдёт в твои приглашения, " +
+                "чтобы друзьям не нужно было его вводить. Обновляй, только если ссылку прислал владелец сервера: " +
+                "с чужим кодом друзья не смогут зарегистрироваться.",
+        )
+        Button(onClick = { FriendsModel.updateCode(s.uri) }) { Text("Обновить") }
         OutlinedButton(onClick = { FriendsModel.screen = FriendsModel.Screen.Home }) { Text("Отмена") }
     }
 }

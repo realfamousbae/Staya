@@ -94,7 +94,7 @@ class OnboardingTest {
     }
 
     private fun onboard(link: String = "", manual: String = "", code: String = "", nick: String = "Лёша") =
-        AppModel.onboard(core, link, manual, code, nick, null, clientFactory())
+        AppModel.onboard(core, link, manual, code, nick, null, client = clientFactory())
 
     @Test
     fun serverLinkWithPinRegistersAndPublishesKeys() {
@@ -108,9 +108,24 @@ class OnboardingTest {
     fun closedServerAsksForCodeThenWorks() {
         inviteCode = "beta"
         val message = onboard(link = "staya://server?v=1&s=$host&p=${pin()}")!!
-        assertTrue(message, message.contains("код приглашения"))
+        assertTrue(message, message.contains("код регистрации"))
+        assertTrue("the code field shows up by itself", AppModel.needCode)
         assertNull("binding is undone so the user can retry", core.server())
         assertNull(onboard(link = "staya://server?v=1&s=$host&p=${pin()}", code = " beta "))
+        assertEquals(false, AppModel.needCode)
+        // Принятый код запомнен: он уйдёт в мои приглашения, друзьям не вводить.
+        assertEquals("beta", core.server()!!.registrationCode)
+        assertTrue(core.createInvite(uniffi.staya_core.InviteMethod.LINK, 1_700_000_000).contains("&c=beta&"))
+    }
+
+    @Test
+    fun codeFromTheLinkIsUsedWithoutTyping() {
+        inviteCode = "beta"
+        // Ссылка в https-виде — как придёт из мессенджера (protocol §5.4).
+        val web = uniffi.staya_core.webLink("staya://server?v=1&s=$host&p=${pin()}&c=beta")!!
+        assertTrue(web, web.startsWith("https://"))
+        assertNull(onboard(link = web))
+        assertEquals("beta", core.server()!!.registrationCode)
     }
 
     @Test
