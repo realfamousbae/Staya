@@ -1,0 +1,102 @@
+{
+  "generatedAt": "2026-10-10T09:15:03.542Z",
+  "commit": "9d6daa7fb9eb6101108bd157ef8efe726c4fe2e6",
+  "version": "0.1.0",
+  "files": 219,
+  "lines": 24774,
+  "code": {
+    "files": 128,
+    "lines": 19173,
+    "sourceLines": 13668,
+    "averageLines": 150,
+    "rust": 12046,
+    "swift": 3127,
+    "kotlin": 4000
+  },
+  "tests": {
+    "cases": 172,
+    "files": 26,
+    "lines": 5505
+  },
+  "languages": [
+    {
+      "name": "Rust",
+      "color": "#f97316",
+      "lines": 12046
+    },
+    {
+      "name": "Kotlin",
+      "color": "#8b5cf6",
+      "lines": 4209
+    },
+    {
+      "name": "Swift",
+      "color": "#f43f5e",
+      "lines": 3127
+    },
+    {
+      "name": "Other",
+      "color": "#94a3b8",
+      "lines": 2183
+    },
+    {
+      "name": "Config",
+      "color": "#14b8a6",
+      "lines": 1497
+    },
+    {
+      "name": "Markdown",
+      "color": "#a855f7",
+      "lines": 1040
+    },
+    {
+      "name": "Shell",
+      "color": "#22c55e",
+      "lines": 672
+    }
+  ],
+  "largest": [
+    {
+      "path": "core/fuzz/Cargo.lock",
+      "lines": 1477
+    },
+    {
+      "path": "core/src/friends.rs",
+      "lines": 940
+    },
+    {
+      "path": "core/tests/ffi_api.rs",
+      "lines": 822
+    },
+    {
+      "path": "core/src/api.rs",
+      "lines": 773
+    },
+    {
+      "path": "core/tests/friend_add.rs",
+      "lines": 579
+    }
+  ],
+  "crates": {
+    "workspace": 5,
+    "external": 260
+  },
+  "unsafeBlocks": 0,
+  "protocolVersion": "v0.3",
+  "plan": {
+    "done": 44,
+    "total": 49
+  },
+  "docs": {
+    "markdown": 10
+  },
+  "todos": 0,
+  "commits": {
+    "total": 75,
+    "last7Days": 60,
+    "last30Days": 75,
+    "lastCommit": "2026-10-07T22:59:59.000Z"
+  },
+  "contributors": 3,
+  "ageDays": 13
+}
