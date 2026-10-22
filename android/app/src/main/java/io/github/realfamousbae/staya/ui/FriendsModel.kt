@@ -1,5 +1,7 @@
 package io.github.realfamousbae.staya.ui
 
+import android.app.Application
+import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -36,6 +38,8 @@ object FriendsModel {
 
     private val worker = Net.worker
     private var core: StayaCore? = null
+    // Application, не Context: единственный контекст, который объект может держать без утечки.
+    private var app: Application? = null
     private var sync: CoreSync? = null
     private var live: LiveConnection? = null
 
@@ -47,7 +51,8 @@ object FriendsModel {
     var message by mutableStateOf<String?>(null)
 
     /** Приложение на экране и аккаунт готов: ключи, ящик, WebSocket. */
-    fun start(core: StayaCore) {
+    fun start(core: StayaCore, context: Context) {
+        app = context.applicationContext as? Application
         worker.execute {
             if (this.core !== core) {
                 live?.stop()
@@ -73,6 +78,7 @@ object FriendsModel {
     /** События из ящика (в [worker]). Новому другу — сразу последний замер: иначе в покое он ждал бы часами. */
     private fun onEvents(core: StayaCore, events: List<CoreEvent>) {
         reload()
+        app?.let { LocationShare.recordDrops(it, events) }
         if (events.any { it is CoreEvent.FriendAdded }) LocationShare.resend(core)
     }
 

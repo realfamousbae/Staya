@@ -77,8 +77,9 @@ private fun Root() {
                     AppModel.Phase.Onboarding -> OnboardingScreen(state.core, state.accountId)
                     is AppModel.Phase.Ready -> {
                         // На экране — синхронизация и WebSocket; при уходе в фон — стоп (onPause).
+                        val context = LocalContext.current
                         LaunchedEffect(state, AppModel.foreground) {
-                            if (AppModel.foreground) FriendsModel.start(state.core)
+                            if (AppModel.foreground) FriendsModel.start(state.core, context)
                         }
                         LaunchedEffect(AppModel.pendingLink) {
                             AppModel.pendingLink?.let {

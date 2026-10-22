@@ -12,6 +12,10 @@ import android.content.Intent
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED && intent.action != Intent.ACTION_MY_PACKAGE_REPLACED) return
+        if (!LocationShare.isEnabled(context)) return
+        // Будильники не переживают перезагрузку и обновление: взводим сторож до запуска —
+        // если запуск не удастся (нет исключения из оптимизации батареи), он попробует позже.
+        Watchdog.schedule(context)
         LocationShare.startService(context, fromBackground = true)
     }
 }
