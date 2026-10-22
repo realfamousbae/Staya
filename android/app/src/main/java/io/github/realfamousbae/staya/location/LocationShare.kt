@@ -136,12 +136,13 @@ object LocationShare {
         }
     }
 
+    /** Пакет в очереди ядра; «отправлено» — только если он и правда ушёл. */
     private fun recordSent(app: Context) {
-        LocationDiagnostics.mark(app, LocationDiagnostics.SENT_AT)
         val error = sender.lastSendError
         if (error != null) {
             LocationDiagnostics.reason(app, LocationDiagnostics.SEND_ERROR, LocationDiagnostics.SEND_ERROR_AT, error)
         } else {
+            LocationDiagnostics.mark(app, LocationDiagnostics.SENT_AT)
             LocationDiagnostics.clear(app, LocationDiagnostics.SEND_ERROR, LocationDiagnostics.SEND_ERROR_AT)
         }
     }

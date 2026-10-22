@@ -66,9 +66,10 @@ object LocationPolicy {
     const val WATCHDOG_INTERVAL_MS = 15 * 60_000L
 
     /**
-     * В покое сдвиг больше этого от первого замера покоя — телефон поехал, а датчик
-     * значимого движения промолчал (его нет или он не сработал): точный режим.
-     * Больше погрешности сетевой геолокации (~100 м), чтобы шум не включал GPS.
+     * В покое сдвиг больше этого (сверх погрешностей обоих замеров) от первого замера
+     * покоя — телефон поехал, а датчик значимого движения промолчал (его нет или он не
+     * сработал): точный режим. Погрешности учитываются, иначе точки уровня соты
+     * (±500–2000 м без Wi-Fi) дёргали бы GPS на каждом дрожании.
      */
     const val MOVED_M = 250.0
 
@@ -90,7 +91,12 @@ object LocationPolicy {
         return 2 * EARTH_RADIUS_M * asin(sqrt(a))
     }
 
-    fun moved(from: Fix, to: Fix): Boolean = distanceM(from.latitude, from.longitude, to.latitude, to.longitude) > MOVED_M
+    /** Замер без точности — не якорь и не сдвиг. */
+    fun moved(from: Fix, to: Fix): Boolean {
+        val a = from.accuracyM ?: return false
+        val b = to.accuracyM ?: return false
+        return distanceM(from.latitude, from.longitude, to.latitude, to.longitude) > MOVED_M + a + b
+    }
 }
 
 /**

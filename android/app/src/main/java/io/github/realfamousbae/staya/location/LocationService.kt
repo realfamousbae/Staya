@@ -216,7 +216,7 @@ class LocationService : Service() {
         if (!highPower) {
             val anchor = restAnchor
             if (anchor == null) {
-                restAnchor = fix
+                if (fix.accuracyM != null) restAnchor = fix
             } else if (LocationPolicy.moved(anchor, fix)) {
                 // Переехали, а датчик движения промолчал — точный режим без него.
                 switchPower(high = true)

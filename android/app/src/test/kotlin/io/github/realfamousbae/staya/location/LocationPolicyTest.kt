@@ -88,6 +88,10 @@ class LocationPolicyTest {
         val home = Fix(55.7558, 37.6173, 50f, t)
         assertFalse(LocationPolicy.moved(home, Fix(55.7568, 37.6173, 50f, t))) // ~110 м — шум сети
         assertTrue(LocationPolicy.moved(home, Fix(55.7558, 37.6253, 50f, t))) // ~500 м — поехали
+        // Точки уровня соты: 500 м сдвига внутри погрешностей — не движение; без точности — тоже нет.
+        assertFalse(LocationPolicy.moved(Fix(55.7558, 37.6173, 800f, t), Fix(55.7558, 37.6253, 800f, t)))
+        assertFalse(LocationPolicy.moved(Fix(55.7558, 37.6173, null, t), Fix(55.7558, 37.6253, 50f, t)))
+        assertTrue(LocationPolicy.moved(Fix(55.7558, 37.6173, 800f, t), Fix(55.7558, 37.65, 50f, t))) // ~2 км
         assertEquals(0.0, LocationPolicy.distanceM(55.0, 37.0, 55.0, 37.0), 1e-9)
         // Москва — Санкт-Петербург ≈ 634 км.
         assertEquals(634_000.0, LocationPolicy.distanceM(55.7558, 37.6173, 59.9343, 30.3351), 2_000.0)
