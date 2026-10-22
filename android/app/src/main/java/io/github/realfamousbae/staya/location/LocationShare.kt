@@ -50,12 +50,14 @@ object LocationShare {
             runCatching { core.setGhost(false) }.onSuccess { resend(core) }
         }
         startService(app, fromBackground = false)
+        Watchdog.schedule(app)
     }
 
-    /** Выключение: сервис стоп, друзьям — «скрыто». */
+    /** Выключение: сервис стоп, сторож снят, друзьям — «скрыто». */
     fun disable(context: Context, core: StayaCore) {
         val app = context.applicationContext
         setEnabled(app, false)
+        Watchdog.cancel(app)
         app.stopService(Intent(app, LocationService::class.java))
         Net.worker.execute {
             runCatching {
@@ -88,26 +90,59 @@ object LocationShare {
 
     /**
      * Поднять сервис, если пользователь включил передачу. Из фона (загрузка,
-     * обновление) Android 14+ разрешает тип location только с «Разрешить всегда»:
-     * без неё не запускаем вовсе — иначе сервис не смог бы войти в передний план.
+     * обновление, сторож) Android 14+ разрешает тип location только с «Разрешить
+     * всегда»: без неё не запускаем вовсе — иначе сервис не смог бы войти в передний
+     * план. `tick` — срабатывание сторожа: сервису нужен свежий замер и ящик.
      */
-    fun startService(context: Context, fromBackground: Boolean): Boolean {
+    fun startService(context: Context, fromBackground: Boolean, tick: Boolean = false): Boolean {
         if (!isEnabled(context) || !hasForegroundPermission(context)) return false
         if (fromBackground && !hasBackgroundPermission(context)) return false
-        return runCatching {
-            context.startForegroundService(Intent(context, LocationService::class.java))
-        }.isSuccess
+        val intent = Intent(context, LocationService::class.java)
+        if (tick) intent.action = LocationService.ACTION_TICK
+        return runCatching { context.startForegroundService(intent) }.isSuccess
     }
 
     /** Новый замер из сервиса. Ядро открывается и без экрана; если база ещё недоступна — пропуск. */
     fun onFix(context: Context, fix: Fix) {
         val app = context.applicationContext
+        LocationDiagnostics.mark(app, LocationDiagnostics.FIX_AT)
         Net.worker.execute {
             if (!isEnabled(app)) return@execute
             val core = AppCore.openBlocking(app) ?: return@execute
             val sync = Net.bind(core)?.second
-            runCatching { sender.onFix(core, sync, fix) }
-            pollMailbox(core, sync)
+            if (runCatching { sender.onFix(core, sync, fix) }.getOrDefault(false)) recordSent(app)
+            pollMailbox(app, core, sync)
+        }
+    }
+
+    /** Движение остановилось: придержанный замер уходит сразу (см. [SendThrottle]). */
+    fun flushHeld(context: Context) {
+        val app = context.applicationContext
+        Net.worker.execute {
+            if (!isEnabled(app)) return@execute
+            val core = AppCore.openBlocking(app) ?: return@execute
+            val sync = Net.bind(core)?.second
+            if (runCatching { sender.flushHeld(core, sync) }.getOrDefault(false)) recordSent(app)
+        }
+    }
+
+    /** Сторож сработал, замера может и не быть: хотя бы ящик. */
+    fun onTick(context: Context) {
+        val app = context.applicationContext
+        Net.worker.execute {
+            if (!isEnabled(app)) return@execute
+            val core = AppCore.openBlocking(app) ?: return@execute
+            pollMailbox(app, core, Net.bind(core)?.second)
+        }
+    }
+
+    private fun recordSent(app: Context) {
+        LocationDiagnostics.mark(app, LocationDiagnostics.SENT_AT)
+        val error = sender.lastSendError
+        if (error != null) {
+            LocationDiagnostics.reason(app, LocationDiagnostics.SEND_ERROR, LocationDiagnostics.SEND_ERROR_AT, error)
+        } else {
+            LocationDiagnostics.clear(app, LocationDiagnostics.SEND_ERROR, LocationDiagnostics.SEND_ERROR_AT)
         }
     }
 
@@ -118,13 +153,20 @@ object LocationShare {
      * ссылке обрабатывается, не дожидаясь, пока я открою приложение (protocol §5).
      * На экране ящик ведёт WebSocket. Только из [Net.worker].
      */
-    private fun pollMailbox(core: StayaCore, sync: CoreSync?) {
+    private fun pollMailbox(app: Context, core: StayaCore, sync: CoreSync?) {
         if (sync == null || AppModel.foreground) return
         val now = System.currentTimeMillis()
         if (!LocationPolicy.shouldPollMailbox(now, lastMailboxPollMs)) return
         lastMailboxPollMs = now
         val events = runCatching { sync.sync() }.getOrNull() ?: return
+        recordDrops(app, events)
         // Новому другу — сразу последний замер, как на экране.
         if (events.any { it is CoreEvent.FriendAdded }) resend(core)
+    }
+
+    /** Отброшенный конверт (например, нерасшифрованный пакет друга) — в диагностику. */
+    fun recordDrops(context: Context, events: List<CoreEvent>) {
+        val dropped = events.lastOrNull { it is CoreEvent.Dropped } as? CoreEvent.Dropped ?: return
+        LocationDiagnostics.reason(context, LocationDiagnostics.DROP, LocationDiagnostics.DROP_AT, dropped.reason)
     }
 }

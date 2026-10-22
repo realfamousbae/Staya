@@ -31,6 +31,8 @@ import androidx.core.net.toUri
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
+import io.github.realfamousbae.staya.map.MapMath
+import kotlinx.coroutines.delay
 import uniffi.staya_core.StayaCore
 
 /**
@@ -103,6 +105,7 @@ fun SharingCard(core: StayaCore) {
                 }
             })
         }
+        Diagnostics(resumes)
         // Пересчитываются при каждом возвращении на экран (например, из настроек).
         val background = remember(resumes) { LocationShare.hasBackgroundPermission(context) }
         val notifications = remember(resumes) {
@@ -144,6 +147,45 @@ fun SharingCard(core: StayaCore) {
                 )
             }) { Text("Настройки приложения") }
         }
+    }
+}
+
+/**
+ * Что происходит с передачей (5.1): жив ли сервис, когда был замер и отправка, что
+ * не удалось. Времена без координат — по ним видно, «лежал телефон» или «сервис умер».
+ */
+@Composable
+private fun Diagnostics(resumes: Int) {
+    val context = LocalContext.current
+    // Сервис стартует и шлёт асинхронно: перечитываем раз в несколько секунд, пока карточка видна.
+    var tick by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(5_000)
+            tick++
+        }
+    }
+    val d = remember(resumes, tick) { LocationDiagnostics.snapshot(context) }
+    val running = remember(resumes, tick) { LocationService.running }
+    val now = System.currentTimeMillis() / 1000
+    fun ago(ms: Long?) = ms?.let { MapMath.ageLabel(now, it / 1000) } ?: "ещё не было"
+    val lines = buildList {
+        add(
+            if (running) {
+                "Передача работает"
+            } else if (d.serviceFailed != null) {
+                "Передача не запущена: ${d.serviceFailed} (${ago(d.serviceFailedAt)})"
+            } else {
+                "Передача не запущена — открой приложение заново или проверь настройки ниже"
+            },
+        )
+        add("Замер: ${ago(d.fixAt)} · отправка: ${ago(d.sentAt)}")
+        if (d.sendError != null) add("Не удалось отправить: ${d.sendError} (${ago(d.sendErrorAt)}) — уйдёт при следующей попытке")
+        d.watchdogAt?.let { add("Сторож проверял: ${ago(it)}") }
+        if (d.drop != null) add("Пакет от друга отброшен: ${d.drop} (${ago(d.dropAt)})")
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        lines.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
     }
 }
 

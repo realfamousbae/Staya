@@ -53,6 +53,11 @@
             android:exported="false"
             android:foregroundServiceType="location" />
 
+        <!-- Сторож передачи (5.1): будильник AlarmManager поднимает сервис, если его убили. -->
+        <receiver
+            android:name=".location.Watchdog"
+            android:exported="false" />
+
         <!-- Системные защищённые broadcast: прислать их может только система. -->
         <receiver
             android:name=".location.BootReceiver"
