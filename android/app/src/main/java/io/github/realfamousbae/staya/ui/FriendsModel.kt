@@ -1,5 +1,6 @@
 package io.github.realfamousbae.staya.ui
 
+import android.app.Application
 import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -24,6 +25,7 @@ import uniffi.staya_core.StayaCore
 object FriendsModel {
     sealed interface Screen {
         data object Home : Screen
+        data object Settings : Screen
         data class ShowQr(val uri: String, val expiresAt: Long) : Screen
         data class ShareLink(val uri: String) : Screen
         data object Scan : Screen
@@ -37,7 +39,8 @@ object FriendsModel {
 
     private val worker = Net.worker
     private var core: StayaCore? = null
-    private var app: Context? = null
+    // Application, не Context: единственный контекст, который объект может держать без утечки.
+    private var app: Application? = null
     private var sync: CoreSync? = null
     private var live: LiveConnection? = null
 
@@ -50,7 +53,7 @@ object FriendsModel {
 
     /** Приложение на экране и аккаунт готов: ключи, ящик, WebSocket. */
     fun start(core: StayaCore, context: Context) {
-        app = context.applicationContext
+        app = context.applicationContext as? Application
         worker.execute {
             if (this.core !== core) {
                 live?.stop()
