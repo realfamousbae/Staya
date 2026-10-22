@@ -131,11 +131,13 @@ private fun FriendsHome(core: StayaCore, server: String) {
         FriendsMap(core, server, friends, focus, modifier = Modifier.fillMaxSize())
 
         // Заголовок-состояние: главное, что должен видеть владелец, — виден ли он сейчас.
+        // Нажатие ведёт в настройки, где передача включается.
         Column(
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .padding(insets)
-                .padding(start = 20.dp, top = 16.dp, end = 84.dp),
+                .padding(start = 20.dp, top = 16.dp, end = 84.dp)
+                .clickable { FriendsModel.screen = FriendsModel.Screen.Settings },
         ) {
             Text(
                 when {
@@ -157,6 +159,10 @@ private fun FriendsHome(core: StayaCore, server: String) {
                 style = MaterialTheme.typography.bodyMedium.copy(shadow = Shadow(halo, blurRadius = 10f)),
                 color = textColor,
             )
+            if (!sharing) {
+                Spacer(Modifier.height(12.dp))
+                Pill("Делиться позицией", { FriendsModel.screen = FriendsModel.Screen.Settings }, modifier = Modifier.width(220.dp))
+            }
             FriendsModel.message?.let {
                 Spacer(Modifier.height(12.dp))
                 Message()
