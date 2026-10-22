@@ -27,7 +27,7 @@
 ## Окружение
 - `source scripts/env.sh` — JAVA_HOME (openjdk@21) и ANDROID_HOME (~/Library/Android/sdk, без Android Studio).
 - Android SDK минимальный: platform-tools, platforms;android-37.0, build-tools;36.0.0, ndk;29.0.14206865. Ничего сверх этого без согласования.
-- iOS: сборка без подписи — `xcodebuild -project ios/Staya.xcodeproj -target Staya -sdk iphonesimulator CODE_SIGNING_ALLOWED=NO build` (схемы с -destination требуют скачанной iOS-платформы). DEVELOPMENT_TEAM — в ios/Config/Local.xcconfig (не в git).
+- iOS: сборка без подписи — `xcodebuild -project ios/Staya.xcodeproj -target Staya -sdk iphonesimulator ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO SYMROOT="$PWD/ios/build" OBJROOT="$PWD/ios/build" build` (схемы с -destination требуют скачанной iOS-платформы; без общего SYMROOT пакет StayaCore собирается в свой каталог, и приложение его не находит). Скачивание пакетов (MapLibre) из песочницы Claude Code не проходит — `xcodebuild -resolvePackageDependencies` запускать без неё. DEVELOPMENT_TEAM — в ios/Config/Local.xcconfig (не в git).
 - iOS: Personal Team (нет платного Apple Developer Program) — без APNs, TestFlight, universal links.
 
 ## Сборка ядра для приложений
