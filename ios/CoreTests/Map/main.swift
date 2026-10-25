@@ -32,6 +32,11 @@ check(MapMath.ageLabel(now: now, timestamp: now + 120) == "только что",
 check(MapMath.ageLabel(now: now, timestamp: now - 330) == "5 мин назад", "minutes")
 check(MapMath.ageLabel(now: now, timestamp: now - 3 * 3600 - 59) == "3 ч назад", "hours")
 check(MapMath.ageLabel(now: now, timestamp: now - 2 * 86_400 - 1) == "2 дн назад", "days")
+check(MapMath.shortAge(now: now, timestamp: now - 30) == "сейчас", "short now")
+check(MapMath.shortAge(now: now, timestamp: now - 5 * 60) == "5 мин", "short minutes")
+check(MapMath.shortAge(now: now, timestamp: now - 3 * 3600) == "3 ч", "short hours")
+check(MapMath.shortAge(now: now, timestamp: now - 2 * 86_400) == "2 д", "short days")
+check(MapMath.shortAge(now: now, timestamp: now + 60) == "сейчас", "short clock ahead")
 
 // Границы из TileJSON сервера.
 let tileJson = #"{"bounds":[35.1,54.2,40.25,57],"center":[37.675,55.6,0]}"#

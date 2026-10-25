@@ -9,6 +9,8 @@ import StayaCore
 @Observable
 final class FriendsModel {
     enum Screen: Identifiable {
+        /// Настройки: передача, разрешения, аккаунт (5.2).
+        case settings
         case showQr(uri: String, expiresAt: Date)
         case shareLink(String)
         case scan
@@ -21,6 +23,7 @@ final class FriendsModel {
 
         var id: String {
             switch self {
+            case .settings: "settings"
             case .showQr(let u, _): "qr" + u
             case .shareLink(let u): "link" + u
             case .scan: "scan"
