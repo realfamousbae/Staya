@@ -1,6 +1,7 @@
 package io.github.realfamousbae.staya
 
 import android.content.Intent
+import io.github.realfamousbae.staya.secure.AppLock
 import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -35,6 +36,7 @@ import io.github.realfamousbae.staya.ui.StayaTheme
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AppLock.initialize(this)
         setBars(lightIcons = true)
         if (savedInstanceState == null) handleLink(intent)
         setContent {
@@ -48,6 +50,11 @@ class MainActivity : ComponentActivity() {
     private fun setBars(lightIcons: Boolean) {
         val style = if (lightIcons) SystemBarStyle.dark(Color.TRANSPARENT) else SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
         enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
+    }
+
+    override fun onStop() {
+        AppLock.background()
+        super.onStop()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -78,6 +85,14 @@ class MainActivity : ComponentActivity() {
 /** Корень: ядро открывается лениво, затем онбординг или главный экран (4.2). */
 @Composable
 private fun Root(onBars: (lightIcons: Boolean) -> Unit) {
+    val activity = androidx.activity.compose.LocalActivity.current ?: return
+    if (AppLock.locked) {
+        io.github.realfamousbae.staya.ui.DarkScreen("Staya заблокирована", null) {
+            AppLock.message?.let { Text(it, color = Ink.mist) }
+            Pill("Открыть", { AppLock.unlock(activity) }, enabled = !AppLock.busy)
+        }
+        return
+    }
     val state = AppCore.state
     val home = state is AppCore.State.Open && AppModel.phase is AppModel.Phase.Ready && FriendsModel.screen == FriendsModel.Screen.Home
     val darkMap = isSystemInDarkTheme()

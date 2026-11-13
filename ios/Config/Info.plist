@@ -8,6 +8,8 @@
 	</array>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Staya показывает твою позицию на карте и отправляет её выбранным друзьям в зашифрованном виде.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Face ID открывает Staya и защищает доступ к карте и друзьям.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Камера нужна, чтобы отсканировать QR-код друга. Кадры никуда не сохраняются и не отправляются.</string>
 	<key>CFBundleURLTypes</key>
