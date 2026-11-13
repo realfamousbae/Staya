@@ -26,6 +26,19 @@ SHA="$(git rev-parse HEAD)"
 [ "$SHA" = "$(git rev-parse origin/main)" ] || { echo "main не совпадает с origin/main" >&2; exit 1; }
 if gh release view "$TAG" >/dev/null 2>&1; then echo "релиз $TAG уже есть" >&2; exit 1; fi
 
+# The mobile Firebase configuration is public SDK metadata, not a server credential.
+# Require it for the author's full release to avoid silently shipping FCM disabled.
+FCM_CONFIG="${STAYA_FIREBASE_ANDROID_CONFIG_FILE:-$HOME/.staya-release/google-services.json}"
+[ -f "$FCM_CONFIG" ] || { echo "missing Android Firebase configuration: $FCM_CONFIG" >&2; exit 1; }
+python3 - "$FCM_CONFIG" <<'PYCONFIG'
+import json, sys
+with open(sys.argv[1]) as source:
+    config = json.load(source)
+assert "private_key" not in config, "A service-account key must never enter an app build"
+assert any(c.get("client_info", {}).get("android_client_info", {}).get("package_name") == "io.github.realfamousbae.staya" for c in config.get("client", [])), "Wrong Android package configuration"
+PYCONFIG
+install -m 600 "$FCM_CONFIG" android/app/google-services.json
+
 OUT="$(mktemp -d)"
 trap 'rm -rf "$OUT"' EXIT
 
