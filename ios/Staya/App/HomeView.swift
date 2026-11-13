@@ -162,7 +162,7 @@ private struct FriendRow: View {
     var body: some View {
         let visible = friend.location.map { $0.kind != .hidden } ?? false
         let fresh = friend.location.map { $0.kind != .hidden && now - $0.timestamp < 10 * 60 } ?? false
-        let status = friend.active ? (locationStatus(friend, now: now) ?? "пока нет позиции") : "ждём ответа"
+        let status = (friend.active ? (locationStatus(friend, now: now) ?? "пока нет позиции") : "ждём ответа") + ((friend.status ?? "").isEmpty ? "" : " · " + (friend.status ?? ""))
         let unverified = friend.active && !friend.verified
         ListRow(
             title: friend.nick ?? "Без имени",
@@ -234,6 +234,7 @@ private struct ScreenSheet: View {
                 if let message = model.message { MessageCard(message) { model.message = nil } }
                 SharingSection(core: core)
                 BatterySharingSetting(core: core)
+                StatusSetting(core: core)
                 SectionTitle("блокировка")
                 AppLockSetting()
                 SectionTitle("аккаунт")
@@ -450,6 +451,42 @@ private struct BatterySharingSetting: View {
         }
         .task {
             do { enabled = try await StayaNet.shared.queue.run { try core.batterySharing() } }
+            catch { failed = true }
+            busy = false
+        }
+    }
+}
+
+private struct StatusSetting: View {
+    let core: StayaCore
+    @State private var status = ""
+    @State private var busy = true
+    @State private var failed = false
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            TextField("Статус для друзей", text: $status, axis: .vertical)
+                .lineLimit(1...2).textFieldStyle(.roundedBorder).disabled(busy)
+            if status.utf8.count > 64 { Text("Сократи статус").foregroundStyle(Ink.mist) }
+            Button("Сохранить статус") {
+                busy = true
+                let next = status
+                let sync = StayaNet.shared.bind(core)?.sync
+                Task {
+                    do {
+                        try await StayaNet.shared.queue.run {
+                            try core.setStatus(status: next)
+                            try? await sync?.flush()
+                        }
+                        failed = false
+                    } catch { failed = true }
+                    busy = false
+                }
+            }
+            .disabled(busy || status.utf8.count > 64)
+            if failed { Text("Не удалось сохранить статус. Попробуй ещё раз.").font(.footnote).foregroundStyle(Ink.mist) }
+        }
+        .task {
+            do { status = try await StayaNet.shared.queue.run { try core.myProfile().status } }
             catch { failed = true }
             busy = false
         }

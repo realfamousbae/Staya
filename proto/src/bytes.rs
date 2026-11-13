@@ -12,6 +12,10 @@ impl<'a> Reader<'a> {
         Self { buf }
     }
 
+    pub(crate) fn is_empty(&self) -> bool {
+        self.buf.is_empty()
+    }
+
     pub(crate) fn take(&mut self, n: usize) -> Result<&'a [u8], ProtoError> {
         if self.buf.len() < n {
             return Err(ProtoError::Truncated);

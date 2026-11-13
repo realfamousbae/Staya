@@ -820,3 +820,15 @@ fn bad_input_from_the_platform_is_an_error_not_a_panic() {
         Err(CoreError::MissingLocation)
     ));
 }
+
+#[test]
+fn nickname_updates_preserve_status_and_invalid_status_does_not_change_profile() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("status.db").to_string_lossy().into_owned();
+    let core = StayaCore::open(path, vec![42; 32]).unwrap();
+    core.set_status("On the way".into()).unwrap();
+    core.set_profile("Alice".into(), vec![]).unwrap();
+    assert_eq!(core.my_profile().unwrap().status, "On the way");
+    assert!(core.set_status("x".repeat(65)).is_err());
+    assert_eq!(core.my_profile().unwrap().status, "On the way");
+}

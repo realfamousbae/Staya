@@ -154,6 +154,7 @@ pub fn handle_control(data: &[u8]) -> Vec<Event> {
                 .set_profile(
                     &bob.store,
                     staya_proto::control::Profile {
+                        status: String::new(),
                         nick: "b".into(),
                         avatar: vec![],
                     },

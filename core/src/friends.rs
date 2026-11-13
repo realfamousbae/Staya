@@ -81,6 +81,8 @@ struct OlmEntry {
 
 #[derive(Clone, Serialize, Deserialize)]
 struct StoredProfile {
+    #[serde(default)]
+    status: String,
     nick: String,
     avatar: Vec<u8>,
 }
@@ -88,6 +90,7 @@ struct StoredProfile {
 impl From<&Profile> for StoredProfile {
     fn from(p: &Profile) -> Self {
         Self {
+            status: p.status.clone(),
             nick: p.nick.clone(),
             avatar: p.avatar.clone(),
         }
@@ -97,6 +100,7 @@ impl From<&Profile> for StoredProfile {
 impl From<&StoredProfile> for Profile {
     fn from(p: &StoredProfile) -> Self {
         Self {
+            status: p.status.clone(),
             nick: p.nick.clone(),
             avatar: p.avatar.clone(),
         }
@@ -234,12 +238,13 @@ impl From<InviteMethod> for InviteMethodTag {
 }
 
 /// Публичные сведения о друге для UI.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct FriendInfo {
     pub account_id: AccountId,
     pub state: FriendState,
     pub verified: bool,
     pub nick: Option<String>,
+    pub status: Option<String>,
     pub avatar: Option<Vec<u8>>,
     pub location: Option<LocationPayload>,
 }
@@ -270,6 +275,7 @@ impl Friends {
                 .collect(),
             invites: load_json(store, INVITES_RECORD)?.unwrap_or_default(),
             profile: load_json(store, PROFILE_RECORD)?.unwrap_or(StoredProfile {
+                status: String::new(),
                 nick: String::new(),
                 avatar: vec![],
             }),
@@ -312,6 +318,7 @@ impl Friends {
                 account_id: AccountId(*id),
                 state: f.state,
                 verified: f.verified,
+                status: f.profile.as_ref().map(|p| p.status.clone()),
                 nick: f.profile.as_ref().map(|p| p.nick.clone()),
                 avatar: f.profile.as_ref().map(|p| p.avatar.clone()),
                 location: f.last_location,
@@ -942,4 +949,13 @@ fn load_json<T: serde::de::DeserializeOwned>(
 fn save_json<T: Serialize>(store: &Store, name: &str, value: &T) -> Result<(), CoreError> {
     let bytes = Zeroizing::new(serde_json::to_vec(value).map_err(|_| CoreError::Corrupted)?);
     store.put_secret(name, &bytes)
+}
+
+impl std::fmt::Debug for FriendInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FriendInfo")
+            .field("account_id", &self.account_id)
+            .field("location", &self.location)
+            .finish_non_exhaustive()
+    }
 }
