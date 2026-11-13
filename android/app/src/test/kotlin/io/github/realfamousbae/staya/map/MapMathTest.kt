@@ -71,3 +71,15 @@ class MapMathTest {
         assertFalse(MapNetwork.allowed("https://staya.example/x".toHttpUrl(), null))
     }
 }
+
+class ShortAgeTest {
+    @Test
+    fun shortAgeForMarkerBadge() {
+        val now = 1_700_000_000L
+        assertEquals("сейчас", MapMath.shortAge(now, now - 30))
+        assertEquals("5 мин", MapMath.shortAge(now, now - 5 * 60))
+        assertEquals("3 ч", MapMath.shortAge(now, now - 3 * 3600))
+        assertEquals("2 д", MapMath.shortAge(now, now - 2 * 86_400))
+        assertEquals("сейчас", MapMath.shortAge(now, now + 60)) // часы спешат
+    }
+}

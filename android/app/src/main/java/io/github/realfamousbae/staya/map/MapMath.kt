@@ -27,6 +27,17 @@ object MapMath {
         return ring + listOf(ring.first())
     }
 
+    /** Короткая давность для бейджа маркера: «сейчас», «5 мин», «3 ч», «2 д». */
+    fun shortAge(nowSec: Long, timestamp: Long): String {
+        val age = (nowSec - timestamp).coerceAtLeast(0)
+        return when {
+            age < 60 -> "сейчас"
+            age < 3600 -> "${age / 60} мин"
+            age < 86_400 -> "${age / 3600} ч"
+            else -> "${age / 86_400} д"
+        }
+    }
+
     /** «только что», «5 мин назад», «3 ч назад», «2 дн назад». */
     fun ageLabel(nowSec: Long, timestamp: Long): String {
         val age = (nowSec - timestamp).coerceAtLeast(0)
