@@ -78,3 +78,41 @@ export SERVER_TAG=<12-символьный-SHA-проверенного-обра
 На двух телефонах: регистрация, QR/ссылка, дружба, карта, позиция, призрак,
 заморозка, удаление; отдельно фон с заблокированным экраном и восстановление сети.
 Проверки на VPS и телефонах отмечать отдельно от локальных тестов.
+
+## Optional FCM for Android
+
+FCM is opt-in and does not carry message contents or locations. For your own server,
+build the Android app with a matching Firebase project's `google-services.json`
+(ignored by git). The main CI uses the encrypted `STAYA_FIREBASE_ANDROID_CONFIG`
+secret for the mobile configuration only; never put a service-account key there.
+Without this configuration or Play Services, ordinary mailbox/location sync remains.
+
+Use a dedicated Google service account with a custom project role containing only
+`cloudmessaging.messages.create`. Do not export the broad default Admin SDK account.
+The server key never belongs in the APK, repository, CI or map/web directories.
+
+Provision it with `deploy/configure-fcm.sh /private/service-account.json` using the
+normal SSH environment. Optionally set `STAYA_FCM_EXPECTED_PROJECT` to verify the
+project against the mobile configuration. The script creates a private read-only
+runtime mount owned by the container UID 65532 and adds the credential-file path to
+`server.env`; it does not restart Docker or other projects. It refuses to overwrite
+an existing key; rotation requires an explicit separate operation.
+
+Deploy the tested image normally. On the VPS, from `/srv/staya`, verify:
+
+```bash
+docker compose exec -T server /staya-server --check-fcm
+```
+
+This uses Google's validation mode and sends no notification. It proves configured
+credentials and sending access, not delivery to a real phone. Then enable Google
+push updates in the Android app and verify reception on that device. iOS remains
+without APNs until a separate developer-account setup.
+
+The SDK keeps auto-init disabled. Explicit consent enables bounded mailbox jobs
+and token refresh; disabling it removes the server address and invalidates the SDK
+token, retrying cleanup when offline. Google sees an opaque installation/delivery
+identifier and delivery times. The Firebase SDK manages its own registration
+metadata in the app sandbox; Staya account/session/E2E keys retain their existing
+Keystore/encrypted-store protections. Analytics, Crashlytics, advertising IDs and
+delivery-metrics export are not enabled.

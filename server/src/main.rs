@@ -30,6 +30,29 @@ async fn main() -> ExitCode {
         .with_writer(std::io::stderr)
         .init();
 
+    if std::env::args().nth(1).as_deref() == Some("--check-fcm") {
+        let Some(path) = env("STAYA_FCM_CREDENTIALS") else {
+            tracing::error!("STAYA_FCM_CREDENTIALS is not set");
+            return ExitCode::FAILURE;
+        };
+        let client = match staya_server::push::FcmClient::from_file(std::path::Path::new(&path)) {
+            Ok(client) => client,
+            Err(reason) => {
+                tracing::error!(reason, "FCM configuration invalid");
+                return ExitCode::FAILURE;
+            }
+        };
+        return match client.validate_configuration().await {
+            Ok(()) => {
+                tracing::info!("FCM configuration valid (dry run; no notification sent)");
+                ExitCode::SUCCESS
+            }
+            Err(category) => {
+                tracing::error!(?category, "FCM configuration check failed");
+                ExitCode::FAILURE
+            }
+        };
+    }
     let Some(url) = env("STAYA_DATABASE_URL") else {
         tracing::error!("STAYA_DATABASE_URL is not set");
         return ExitCode::FAILURE;
@@ -80,7 +103,21 @@ async fn main() -> ExitCode {
         }
     };
     tracing::info!(%addr, "listening");
-    let state = AppState::new(pool.clone(), config);
+    let mut state = AppState::new(pool.clone(), config);
+    if let Some(path) = env("STAYA_FCM_CREDENTIALS") {
+        let client = match staya_server::push::FcmClient::from_file(std::path::Path::new(&path)) {
+            Ok(client) => client,
+            Err(reason) => {
+                tracing::error!(reason, "FCM configuration invalid");
+                return ExitCode::FAILURE;
+            }
+        };
+        state.push = Some(staya_server::push::PushQueue::spawn(
+            pool.clone(),
+            client,
+            state.hub.clone(),
+        ));
+    }
     tokio::spawn(janitor(pool.clone(), state.limits.clone()));
     let service = app(state).into_make_service_with_connect_info::<SocketAddr>();
     let served = axum::serve(listener, service)
@@ -110,6 +147,7 @@ async fn janitor(
         limits.forget_full();
         if auth::purge_expired(&pool).await.is_err()
             || envelopes::purge_expired(&pool).await.is_err()
+            || staya_server::push::purge_expired(&pool).await.is_err()
         {
             tracing::warn!("cleanup of expired data failed");
         }

@@ -7,6 +7,7 @@ class StayaApplication : Application() {
         super.onCreate()
         LegacyCleanup.run(this)
         io.github.realfamousbae.staya.location.NativeSharingConsent.initialize(this)
+        io.github.realfamousbae.staya.push.FcmPush.initialize(this)
         io.github.realfamousbae.staya.location.RemoteLocationRequests.initialize(this)
         io.github.realfamousbae.staya.places.PlaceNotifications.initialize(this)
     }

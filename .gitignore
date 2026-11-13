@@ -51,3 +51,7 @@ core/fuzz/coverage/
 # Генератор стилей карты (tools/map-style)
 node_modules/
 *.profraw
+
+# Provider configuration and runtime credentials are provisioned outside git.
+android/app/google-services.json
+deploy/secrets/

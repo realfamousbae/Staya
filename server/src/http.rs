@@ -39,6 +39,7 @@ pub struct AppState {
     pub hub: Arc<Hub>,
     /// Ограничение частоты запросов.
     pub limits: Arc<Limits>,
+    pub push: Option<crate::push::PushQueue>,
 }
 
 impl AppState {
@@ -48,6 +49,7 @@ impl AppState {
             limits: Arc::new(Limits::new(config.trust_proxy)),
             config: Arc::new(config),
             hub: Arc::default(),
+            push: None,
         }
     }
 }
@@ -64,6 +66,11 @@ pub fn app(state: AppState) -> Router {
         ));
     let api = Router::new()
         .route("/health", get(health))
+        .route("/v1/capabilities", get(crate::push::capabilities))
+        .route(
+            "/v1/push",
+            put(crate::push::register).delete(crate::push::unregister),
+        )
         .route("/v1/keys", put(keys::publish))
         .route("/v1/keys/claim", post(keys::claim))
         .route("/v1/keys/count", get(keys::count))
