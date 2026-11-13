@@ -276,3 +276,21 @@ MVP — это минимум, при котором Staya уже можно п�
 - [ ] Проверка второго сайта, перезагрузки, внешних портов и обмена на двух телефонах.
 
 Чистая база, имя sslip.io, прежний сервер не переносим. Доступ и ресурсы нового VPS проверены: x86_64, около 4 ГБ RAM. CI Rust с PostgreSQL 18, выпуск образа и проверка зависимостей прошли. На новом сервере проверены двусторонний обмен двух тестовых ядер, HTTPS и ресурсы карты, а также работа соседнего сайта при остановленном API Staya. После перезагрузки VPS сервисы поднялись автоматически, TLS-отпечаток сохранился. WebSocket через публичный TLS отклоняет запрос без авторизации. База не публикуется, API, тайлы и admin Caddy слушают loopback; внешний TCP-скан из текущей сети неоднозначен (соединения закрываются без ответа даже на произвольных портах), поэтому независимую внешнюю проверку портов не отмечаем выполненной. Проверка на телефонах остаётся отдельным шагом.
+
+## Next milestone: features and beta release (2026-11-13)
+
+Owner decisions: replace the missing Android signing key (old APK users must reinstall
+and create a new account); Android FCM without Analytics; iOS without APNs/TestFlight.
+
+- [ ] Screen lock with system biometrics/device passcode; keep background sharing working. Code is prepared separately; device verification remains pending.
+- [ ] E2E battery and short status for friends, opt-in battery sharing and legacy-client compatibility.
+- [ ] Places picked manually on our map; local enter/exit evaluation from fresh friend locations and local notifications. Never upload places or reverse-geocode coordinates.
+- [ ] Android FCM in a separate Firebase project without Analytics: wake-up signal only, no coordinates, names or profiles. Keep existing sync on devices without Play Services.
+- [ ] E2E fresh-location request from friends with rate limits; respect consent, ghost, freeze and per-friend precision. iOS can only respond on a subsequent wake without APNs.
+- [ ] Sender privacy: separately versioned delivery, compatible migration and updated threat model. Identifying Authorization on delivery does not achieve sealed sender.
+- [ ] Reproducible unsigned artifacts from independent repeat builds; check signatures separately.
+- [ ] External security audit: prepare materials and resolve findings. Self-review cannot substitute for an independent reviewer.
+- [ ] New APK/IPA beta with complete user-facing notes and an explicit Android signing-key transition warning.
+
+One PR per feature; protocol changes documented before implementation. Multi-device,
+federation, password-encrypted account backup and MLS remain long-term work.
