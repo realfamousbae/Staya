@@ -121,6 +121,12 @@ pub async fn send(
     for (to, event) in &live {
         state.hub.notify(to, event);
     }
+    if let Some(push) = &state.push {
+        let recipients: std::collections::HashSet<_> = live.iter().map(|(to, _)| *to).collect();
+        for recipient in recipients {
+            push.wake(recipient);
+        }
+    }
     Ok(Json(SendResponse { results }))
 }
 

@@ -381,3 +381,27 @@ does not access GPS or override any privacy mode. No location is returned direct
 in a control reply. Fresh readings follow the ordinary encrypted slot/throttle path.
 The UI confirms only queueing/sending a request, never guarantees immediate delivery
 or a response; without APNs, iOS responds only at a subsequent allowed wake.
+
+### Optional Android FCM wake-up transport
+
+`GET /v1/capabilities` advertises `fcm` and `sealed_delivery`. `PUT /v1/push`
+(authenticated) registers an opaque Google registration token for the current
+account; `DELETE /v1/push` removes it even when delivery is disabled. One current
+token per account; re-registration transfers a token from a previous local account.
+Tokens are metadata, never logged, and expire after 30 days without refresh.
+
+Delivery is optional and disabled without server credentials. Only after mailbox
+commit, a bounded worker coalesces wake-ups per recipient, skips active WebSockets,
+and sends fixed data `{\"wake\":\"1\"}` through Google HTTP v1. No names, account IDs,
+coordinates, ciphertext or message type leave for Google. Normal priority, a shared
+collapse key and a one-hour TTL avoid notification spam; Doze/Google policy can
+delay delivery. A wake is best-effort; encrypted mailbox persistence is authoritative.
+
+The Android client keeps SDK auto-init disabled and requires explicit consent
+before obtaining/registering a token. A network-constrained periodic job refreshes
+registration while consent remains enabled. Without config or Play Services it keeps existing
+sync. WorkManager performs a bounded, network-constrained mailbox sync; it does not
+bypass app lock, location consent or platform background restrictions. No Analytics,
+Crashlytics, advertising ID or delivery metrics export is enabled. Service-account
+credentials stay on the VPS, scoped only to FCM sending, and never enter client
+artifacts, repository or request logs.

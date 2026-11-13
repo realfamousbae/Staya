@@ -31,6 +31,11 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "mailboxes",
         sql: include_str!("../migrations/0003_mailboxes.sql"),
     },
+    Migration {
+        version: 4,
+        name: "push",
+        sql: include_str!("../migrations/0004_push.sql"),
+    },
 ];
 
 /// Ключ advisory-блокировки миграций (произвольная константа).

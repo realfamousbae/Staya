@@ -29,6 +29,7 @@ if [ -f .env ]; then
   [ "$old_domain" = "$domain" ] || { echo 'domain change requires explicit migration' >&2; exit 1; }
 fi
 export STAYA_DOMAIN="$domain" SERVER_TAG="$tag"
+[ -d secrets ] || mkdir -m 755 secrets
 docker compose -f compose.next.yml config -q
 docker compose -f compose.next.yml pull
 # Save the database before startup can apply migrations; never print its contents.

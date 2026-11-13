@@ -157,6 +157,7 @@ object LocationShare {
      * На экране ящик ведёт WebSocket. Только из [Net.worker].
      */
     private fun pollMailbox(app: Context, core: StayaCore, sync: CoreSync?) {
+        io.github.realfamousbae.staya.push.FcmPush.maybeRefresh(app)
         if (sync == null || AppModel.foreground) return
         val now = System.currentTimeMillis()
         if (!LocationPolicy.shouldPollMailbox(now, lastMailboxPollMs)) return

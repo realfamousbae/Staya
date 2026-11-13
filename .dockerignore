@@ -5,3 +5,6 @@ android
 ios
 docs
 deploy
+
+**/google-services.json
+**/secrets/

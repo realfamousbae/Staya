@@ -27,6 +27,10 @@ getrandom = { workspace = true }
 subtle = { workspace = true }
 base64 = { workspace = true }
 serde_json = { workspace = true }
+# Google HTTP v1 transport and standard RS256 service-account assertions; no custom crypto.
+reqwest = { version = "0.12.28", default-features = false, features = ["json", "rustls-tls-native-roots"] }
+jsonwebtoken = { version = "11.1.0", features = ["aws_lc_rs"] }
+zeroize = { workspace = true }
 
 [dev-dependencies]
 tower = { workspace = true }

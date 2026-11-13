@@ -292,6 +292,7 @@ private fun SettingsScreen(core: StayaCore, nick: String, server: String) {
         SharingCard(core)
         BatterySharingSetting(core)
         StatusSetting(core)
+        io.github.realfamousbae.staya.push.FcmSetting(core)
         LocationRequestSetting(core)
         ListRow("Места", "Локальные уведомления о приходе и уходе") { FriendsModel.screen = FriendsModel.Screen.Places }
         SectionTitle("блокировка")

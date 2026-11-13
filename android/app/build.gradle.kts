@@ -3,12 +3,16 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+val fcmConfigured = file("google-services.json").isFile
+if (fcmConfigured) apply(plugin = "com.google.gms.google-services")
+
 android {
     namespace = "io.github.realfamousbae.staya"
     compileSdk = 37
     ndkVersion = "29.0.14206865"
 
     defaultConfig {
+        buildConfigField("boolean", "FCM_CONFIGURED", fcmConfigured.toString())
         applicationId = "io.github.realfamousbae.staya"
         minSdk = 29
         targetSdk = 37
@@ -59,6 +63,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     // Никаких метаданных о зависимостях в APK: они нужны только Google Play.
@@ -69,6 +74,11 @@ android {
 }
 
 dependencies {
+    // Optional consent-based wake-up transport only; no Analytics/Crashlytics.
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.messaging)
+    // Persist a bounded mailbox sync across background-process termination.
+    implementation(libs.androidx.work)
     implementation(project(":core"))
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)

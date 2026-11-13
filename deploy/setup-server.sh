@@ -76,4 +76,5 @@ for f in postgres.env server.env; do
 done
 
 install -d -m 750 -o "$DEPLOY_USER" -g "$DEPLOY_USER" /srv/proxy /srv/proxy/sites
+install -d -m 700 -o 65532 -g 65532 "$APP_DIR/secrets"
 echo "setup ok"
