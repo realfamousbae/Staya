@@ -12,6 +12,7 @@ struct ContentView: View {
         NavigationStack {
             content
         }
+        .tint(Ink.mint)
         .task { core.open() }
         // Ссылки staya://… из других приложений: только в поле онбординга или на подтверждение.
         .onOpenURL { url in app.pendingLink = DeepLink.parse(url.absoluteString) }
@@ -29,7 +30,7 @@ struct ContentView: View {
             Group {
                 switch app.phase {
                 case .loading:
-                    ProgressView()
+                    spinner
                 case .onboarding:
                     OnboardingView(core: staya, accountId: accountId)
                 case .ready(let nick, let server, let id):
@@ -46,14 +47,23 @@ struct ContentView: View {
             }
             .task { app.refresh(core: staya, accountId: accountId) }
         case .closed, .opening:
-            ProgressView()
+            spinner
         case .unavailable(let reason):
-            ContentUnavailableView("Не удалось открыть данные", systemImage: "lock", description: Text(reason))
-        case .broken(let reason):
-            VStack(spacing: 12) {
-                ContentUnavailableView("Данные повреждены", systemImage: "exclamationmark.triangle", description: Text(reason))
-                Button("Сбросить локальные данные", role: .destructive) { core.reset() }
+            DarkScreen(title: "не удалось открыть данные") {
+                Text(reason).foregroundStyle(Ink.mist)
             }
+        case .broken(let reason):
+            DarkScreen(title: "данные повреждены") {
+                Text(reason).foregroundStyle(Ink.mist)
+                Pill(text: "Сбросить локальные данные") { core.reset() }
+            }
+        }
+    }
+
+    private var spinner: some View {
+        ZStack {
+            Ink.ink.ignoresSafeArea()
+            ProgressView().tint(Ink.mint)
         }
     }
 }

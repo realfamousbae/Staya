@@ -20,6 +20,17 @@ enum MapMath {
         return ring
     }
 
+    /// Короткая давность для бейджа маркера: «сейчас», «5 мин», «3 ч», «2 д».
+    static func shortAge(now: Int64, timestamp: Int64) -> String {
+        let age = max(0, now - timestamp)
+        switch age {
+        case ..<60: return "сейчас"
+        case ..<3600: return "\(age / 60) мин"
+        case ..<86_400: return "\(age / 3600) ч"
+        default: return "\(age / 86_400) д"
+        }
+    }
+
     /// «только что», «5 мин назад», «3 ч назад», «2 дн назад».
     static func ageLabel(now: Int64, timestamp: Int64) -> String {
         let age = max(0, now - timestamp)

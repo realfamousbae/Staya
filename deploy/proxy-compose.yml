@@ -1,0 +1,22 @@
+name: proxy
+services:
+  caddy:
+    mem_limit: ${CADDY_MEMORY_LIMIT:-128m}
+    image: caddy:2-alpine@sha256:881bbc60f9986d5ab8e7cfd6cf7e4ef3c9c0439fef2429d035d065577882f028
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      ACME_CA: ${ACME_CA:-https://acme-staging-v02.api.letsencrypt.org/directory}
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./sites:/etc/caddy/sites:ro
+      - /srv/staya/map:/srv/staya/map:ro
+      - /srv/staya/www:/srv/staya/www:ro
+      - caddy_data:/data
+      - caddy_config:/config
+volumes:
+  caddy_data: {}
+  caddy_config: {}

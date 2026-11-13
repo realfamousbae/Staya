@@ -3,9 +3,9 @@ import StayaCore
 import SwiftUI
 import UIKit
 
-/// Куда сдвинуть карту: друг из списка (по нажатию).
+/// Куда сдвинуть карту: друг из списка (по нажатию) или все друзья (`friendId == nil`).
 struct MapFocus: Equatable {
-    let friendId: String
+    let friendId: String?
     let nonce = UUID()
 }
 
@@ -21,8 +21,9 @@ func locationStatus(_ friend: FriendView, now: Int64) -> String? {
     }
 }
 
-/// Карта друзей (задача 4.4): стиль и тайлы со своего сервера, маркер — аватар и
-/// «ник · N мин назад», круг точности. Скрывшие позицию на карте не показываются.
+/// Карта друзей (задачи 4.4, 5.2): стиль и тайлы со своего сервера; маркер — аватар в
+/// белом кольце с бейджем давности под ним («5 мин», зелёная точка — свежая), круг
+/// точности. Скрывшие позицию на карте не показываются. Кнопки — у экрана поверх карты.
 struct FriendsMapView: UIViewRepresentable {
     let core: StayaCore
     let friends: [FriendView]
@@ -40,6 +41,11 @@ struct FriendsMapView: UIViewRepresentable {
         let view = MLNMapView(frame: .zero, styleURL: url)
         view.allowsRotating = false
         view.allowsTilting = false
+        // Логотип движка не нужен; атрибуция данных карты (OpenStreetMap) обязательна —
+        // кнопка «i» слева снизу, над нижними кнопками экрана.
+        view.logoView.isHidden = true
+        view.attributionButtonPosition = .bottomLeft
+        view.attributionButtonMargins = CGPoint(x: 8, y: 96)
         view.delegate = context.coordinator
         context.coordinator.mapView = view
         context.coordinator.dark = dark
@@ -59,7 +65,7 @@ struct FriendsMapView: UIViewRepresentable {
         c.refresh()
         if let focus, focus != c.lastFocus {
             c.lastFocus = focus
-            c.show(friendId: focus.friendId)
+            if let id = focus.friendId { c.show(friendId: id) } else { c.showAll() }
         }
     }
 
@@ -73,6 +79,8 @@ struct FriendsMapView: UIViewRepresentable {
         var lastFocus: MapFocus?
         /// 0 — камера не выставлена, 1 — показан регион, 2 — показаны друзья.
         private var fitted = 0
+        /// Картинки маркеров по друзьям: бейдж меняется раз в минуту, старые убираем из стиля.
+        private var icons: [String: String] = [:]
 
         private static let friendsSource = "staya-friends"
         private static let accuracySource = "staya-accuracy"
@@ -83,15 +91,15 @@ struct FriendsMapView: UIViewRepresentable {
             let points = MLNShapeSource(identifier: Self.friendsSource, shape: nil, options: nil)
             style.addSource(accuracy)
             style.addSource(points)
-            let blue = UIColor(red: 0.18, green: 0.44, blue: 0.93, alpha: 1)
+            let green = UIColor(red: 0.298, green: 0.851, blue: 0.482, alpha: 1)
 
             let fill = MLNFillStyleLayer(identifier: "staya-accuracy-fill", source: accuracy)
-            fill.fillColor = NSExpression(forConstantValue: blue)
+            fill.fillColor = NSExpression(forConstantValue: green)
             fill.fillOpacity = NSExpression(forConstantValue: 0.12)
             style.addLayer(fill)
 
             let line = MLNLineStyleLayer(identifier: "staya-accuracy-line", source: accuracy)
-            line.lineColor = NSExpression(forConstantValue: blue)
+            line.lineColor = NSExpression(forConstantValue: green)
             line.lineOpacity = NSExpression(forConstantValue: 0.5)
             line.lineWidth = NSExpression(forConstantValue: 1)
             style.addLayer(line)
@@ -100,16 +108,8 @@ struct FriendsMapView: UIViewRepresentable {
             symbols.iconImageName = NSExpression(forKeyPath: "icon")
             symbols.iconAllowsOverlap = NSExpression(forConstantValue: true)
             symbols.iconIgnoresPlacement = NSExpression(forConstantValue: true)
-            symbols.text = NSExpression(forKeyPath: "label")
-            // Шрифты — только те, что раздаёт сервер (deploy/map/update-map.sh).
-            symbols.textFontNames = NSExpression(forConstantValue: ["Noto Sans Medium"])
-            symbols.textFontSize = NSExpression(forConstantValue: 12)
-            symbols.textAnchor = NSExpression(forConstantValue: "top")
-            symbols.textOffset = NSExpression(forConstantValue: NSValue(cgVector: CGVector(dx: 0, dy: 1.9)))
-            symbols.textAllowsOverlap = NSExpression(forConstantValue: true)
-            symbols.textColor = NSExpression(forConstantValue: dark ? UIColor(white: 0.95, alpha: 1) : UIColor(white: 0.1, alpha: 1))
-            symbols.textHaloColor = NSExpression(forConstantValue: dark ? UIColor(white: 0.1, alpha: 1) : UIColor.white)
-            symbols.textHaloWidth = NSExpression(forConstantValue: 1.5)
+            // Точка — центр аватара, а не центр картинки с бейджем (см. markerImage).
+            symbols.iconOffset = NSExpression(forConstantValue: NSValue(cgVector: CGVector(dx: 0, dy: Self.markerShift)))
             style.addLayer(symbols)
 
             self.style = style
@@ -130,15 +130,22 @@ struct FriendsMapView: UIViewRepresentable {
             else { return }
             var markers: [MLNPointFeature] = []
             var circles: [MLNPolygonFeature] = []
+            var seen = Set<String>()
             for (f, loc) in visible {
-                // Имя картинки меняется вместе с аватаром и ником — не старая из кэша стиля.
-                let icon = "avatar-\(f.accountId)-\(f.avatar?.hashValue ?? 0)-\(f.nick?.hashValue ?? 0)"
+                let badge = MapMath.shortAge(now: now, timestamp: loc.timestamp)
+                let fresh = now - loc.timestamp < 10 * 60
+                // Имя картинки меняется вместе с аватаром, ником и бейджем — не старая из кэша стиля.
+                let icon = "avatar-\(f.accountId)-\(f.avatar?.hashValue ?? 0)-\(f.nick?.hashValue ?? 0)-\(badge)\(fresh)"
+                if let previous = icons.updateValue(icon, forKey: f.accountId), previous != icon {
+                    style.removeImage(forName: previous)
+                }
+                seen.insert(f.accountId)
                 if style.image(forName: icon) == nil {
-                    style.setImage(Self.markerImage(f), forName: icon)
+                    style.setImage(Self.markerImage(f, badge: badge, fresh: fresh), forName: icon)
                 }
                 let point = MLNPointFeature()
                 point.coordinate = CLLocationCoordinate2D(latitude: Double(loc.latE7) / 1e7, longitude: Double(loc.lonE7) / 1e7)
-                point.attributes = ["icon": icon, "label": (f.nick ?? "Без имени") + "\n" + (locationStatus(f, now: now) ?? "")]
+                point.attributes = ["icon": icon]
                 markers.append(point)
                 if loc.accuracyM > 0 {
                     var ring = MapMath.accuracyRing(latE7: loc.latE7, lonE7: loc.lonE7, radiusM: Double(loc.accuracyM))
@@ -146,26 +153,38 @@ struct FriendsMapView: UIViewRepresentable {
                     circles.append(MLNPolygonFeature(coordinates: &ring, count: UInt(ring.count)))
                 }
             }
+            for id in Set(icons.keys).subtracting(seen) {
+                if let old = icons.removeValue(forKey: id) { style.removeImage(forName: old) }
+            }
             points.shape = MLNShapeCollectionFeature(shapes: markers)
             accuracy.shape = MLNShapeCollectionFeature(shapes: circles)
             fitCamera()
+        }
+
+        /// Все видимые друзья в кадре; одного — крупно. `false` — показывать было некого.
+        @discardableResult
+        private func fitAll(animated: Bool) -> Bool {
+            guard let mapView else { return false }
+            let coords = visible.map {
+                CLLocationCoordinate2D(latitude: Double($0.1.latE7) / 1e7, longitude: Double($0.1.lonE7) / 1e7)
+            }
+            if coords.isEmpty { return false }
+            if coords.count == 1 {
+                mapView.setCenter(coords[0], zoomLevel: 14, animated: animated)
+            } else {
+                var c = coords
+                mapView.setVisibleCoordinates(&c, count: UInt(c.count), edgePadding: UIEdgeInsets(top: 120, left: 60, bottom: 120, right: 60), animated: animated)
+            }
+            return true
         }
 
         /// Первый показ: все друзья; если их нет — регион карты сервера.
         /// Список друзей приходит после карты: сначала регион, потом — друзья.
         private func fitCamera() {
             guard let mapView else { return }
-            let coords = visible.map {
-                CLLocationCoordinate2D(latitude: Double($0.1.latE7) / 1e7, longitude: Double($0.1.lonE7) / 1e7)
-            }
-            if !coords.isEmpty, fitted < 2 {
+            if !visible.isEmpty, fitted < 2 {
                 fitted = 2
-                if coords.count == 1 {
-                    mapView.setCenter(coords[0], zoomLevel: 14, animated: false)
-                } else {
-                    var c = coords
-                    mapView.setVisibleCoordinates(&c, count: UInt(c.count), edgePadding: UIEdgeInsets(top: 80, left: 60, bottom: 80, right: 60), animated: false)
-                }
+                fitAll(animated: false)
             } else if fitted == 0 {
                 fitted = 1
                 Task { [weak mapView] in
@@ -179,34 +198,77 @@ struct FriendsMapView: UIViewRepresentable {
             }
         }
 
+        func showAll() {
+            fitAll(animated: true)
+        }
+
         func show(friendId: String) {
             guard let loc = visible.first(where: { $0.0.accountId == friendId })?.1 else { return }
             let center = CLLocationCoordinate2D(latitude: Double(loc.latE7) / 1e7, longitude: Double(loc.lonE7) / 1e7)
             mapView?.setCenter(center, zoomLevel: 15, animated: true)
         }
 
-        /// Круглый аватар с обводкой; без аватара — первая буква ника.
-        private static func markerImage(_ friend: FriendView) -> UIImage {
-            let size = CGSize(width: 44, height: 44)
-            return UIGraphicsImageRenderer(size: size).image { _ in
+        private static let avatarSize: CGFloat = 48
+        private static let ring: CGFloat = 3
+        private static let badgeHeight: CGFloat = 20
+        private static let overlap: CGFloat = 6
+        /// Картинка выше аватара на высоту бейджа минус перекрытие: смещаем на половину вниз.
+        static let markerShift: CGFloat = (badgeHeight - overlap) / 2
+
+        /// Аватар в белом кольце (без аватара — первая буква ника на мятном), под ним бейдж
+        /// давности: тёмная пилюля с белым текстом и зелёной точкой, если позиция свежая.
+        private static func markerImage(_ friend: FriendView, badge: String, fresh: Bool) -> UIImage {
+            let avatar = avatarSize
+            let font = UIFont.systemFont(ofSize: 11.5, weight: .bold)
+            let text = NSAttributedString(string: badge, attributes: [.font: font, .foregroundColor: UIColor.white])
+            let dot: CGFloat = fresh ? 6 : 0
+            let badgeWidth = text.size().width + 16 + (fresh ? dot + 4 : 0)
+            let width = max(avatar, badgeWidth) + 4
+            let height = avatar + badgeHeight - overlap + 4
+            let size = CGSize(width: width, height: height)
+            let cx = width / 2
+            let top: CGFloat = 2
+            return UIGraphicsImageRenderer(size: size).image { ctx in
+                // Кольцо и аватар.
+                ctx.cgContext.setShadow(offset: CGSize(width: 0, height: 2), blur: 4, color: UIColor.black.withAlphaComponent(0.33).cgColor)
                 UIColor.white.setFill()
-                UIBezierPath(ovalIn: CGRect(origin: .zero, size: size)).fill()
-                let inner = CGRect(x: 3, y: 3, width: 38, height: 38)
-                if let data = friend.avatar, !data.isEmpty, let avatar = UIImage(data: data) {
+                UIBezierPath(ovalIn: CGRect(x: cx - avatar / 2, y: top, width: avatar, height: avatar)).fill()
+                ctx.cgContext.setShadow(offset: .zero, blur: 0, color: nil)
+                let inner = CGRect(x: cx - avatar / 2 + ring, y: top + ring, width: avatar - 2 * ring, height: avatar - 2 * ring)
+                ctx.cgContext.saveGState()
+                if let data = friend.avatar, !data.isEmpty, let picture = UIImage(data: data) {
                     UIBezierPath(ovalIn: inner).addClip()
-                    avatar.draw(in: inner)
+                    picture.draw(in: inner)
                 } else {
-                    UIColor(red: 0.18, green: 0.44, blue: 0.93, alpha: 1).setFill()
+                    UIColor(red: 0.663, green: 0.941, blue: 0.78, alpha: 1).setFill()
                     UIBezierPath(ovalIn: inner).fill()
                     let letter = friend.nick?.trimmingCharacters(in: .whitespaces).first.map { String($0).uppercased() } ?? "?"
                     let attrs: [NSAttributedString.Key: Any] = [
-                        .font: UIFont.systemFont(ofSize: 20, weight: .semibold),
-                        .foregroundColor: UIColor.white,
+                        .font: UIFont.systemFont(ofSize: avatar * 0.42, weight: .bold),
+                        .foregroundColor: UIColor(red: 0.059, green: 0.059, blue: 0.071, alpha: 1),
                     ]
-                    let text = NSAttributedString(string: letter, attributes: attrs)
-                    let s = text.size()
-                    text.draw(at: CGPoint(x: (size.width - s.width) / 2, y: (size.height - s.height) / 2))
+                    let string = NSAttributedString(string: letter, attributes: attrs)
+                    let s = string.size()
+                    string.draw(at: CGPoint(x: inner.midX - s.width / 2, y: inner.midY - s.height / 2))
                 }
+                ctx.cgContext.restoreGState()
+
+                // Бейдж.
+                let pill = CGRect(x: cx - badgeWidth / 2, y: top + avatar - overlap, width: badgeWidth, height: badgeHeight)
+                let path = UIBezierPath(roundedRect: pill, cornerRadius: badgeHeight / 2)
+                UIColor(red: 0.059, green: 0.059, blue: 0.071, alpha: 1).setFill()
+                path.fill()
+                UIColor.white.setStroke()
+                path.lineWidth = 1.5
+                path.stroke()
+                var textX = cx
+                if fresh {
+                    UIColor(red: 0.298, green: 0.851, blue: 0.482, alpha: 1).setFill()
+                    UIBezierPath(ovalIn: CGRect(x: pill.minX + 8, y: pill.midY - dot / 2, width: dot, height: dot)).fill()
+                    textX += (dot + 4) / 2
+                }
+                let ts = text.size()
+                text.draw(at: CGPoint(x: textX - ts.width / 2, y: pill.midY - ts.height / 2))
             }
         }
     }
