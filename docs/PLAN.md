@@ -291,7 +291,9 @@ and create a new account); Android FCM without Analytics; iOS without APNs/TestF
 - [ ] Sender privacy: separately versioned delivery, compatible migration and updated threat model. Identifying Authorization on delivery does not achieve sealed sender.
 - [ ] Reproducible unsigned artifacts from independent repeat builds; check signatures separately.
 - [ ] External security audit: prepare materials and resolve findings. Self-review cannot substitute for an independent reviewer.
-- [ ] New APK/IPA beta with complete user-facing notes and an explicit Android signing-key transition warning.
+- [x] New APK/IPA beta with complete user-facing notes and an explicit Android signing-key transition warning: [0.4.1](https://github.com/realfamousbae/Staya/releases/tag/v0.4.1).
+
+Release 0.4.1 is published: signed Android APK and CI-built unsigned IPA, both version 401, from commit `4db2ab633a8a65da3a7077a75b6296ce4efeb8c7`, with SHA256SUMS. The deployed server passed the Google FCM validate-only request on 2026-11-13 and advertises `fcm: true`; no device notification was sent during that check.
 
 Feature implementation and CI checks above are complete. Real-device background behavior, biometrics, local notifications and FCM delivery remain a separate acceptance check; these checkboxes do not claim a phone test.
 
