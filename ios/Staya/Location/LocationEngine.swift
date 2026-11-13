@@ -240,6 +240,7 @@ enum LocationSend {
     static func queue(core: StayaCore, sync: CoreSync?, fix: Fix) async throws -> Bool {
         guard let p = LocationPolicy.toCore(fix), LocationPolicy.isFresh(fix, now: Date()) else { return false }
         let location = Location(latE7: p.latE7, lonE7: p.lonE7, accuracyM: p.accuracyM, timestamp: p.timestamp)
+        try await DeviceBattery.refresh(core: core)
         try core.prepareLocationUpdate(location: location, now: Int64(Date().timeIntervalSince1970))
         try? await sync?.flush()
         return true
@@ -300,4 +301,18 @@ extension LocationEngine: CLLocationManagerDelegate {
     }
 
     nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {}
+}
+
+enum DeviceBattery {
+    static func refresh(core: StayaCore) async throws {
+        let enabled = try core.batterySharing()
+        let reading: (UInt8?, Bool) = await MainActor.run {
+            UIDevice.current.isBatteryMonitoringEnabled = enabled
+            guard enabled, UIDevice.current.batteryLevel >= 0 else { return (nil, false) }
+            let level = min(100, max(0, Int((UIDevice.current.batteryLevel * 100).rounded())))
+            let state = UIDevice.current.batteryState
+            return (UInt8(level), state == .charging || state == .full)
+        }
+        try core.setDeviceBattery(percent: reading.0, charging: reading.1)
+    }
 }

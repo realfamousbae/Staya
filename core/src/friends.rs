@@ -250,6 +250,8 @@ pub struct Friends {
     invites: Vec<PendingInvite>,
     profile: StoredProfile,
     sharing: location::Sharing,
+    battery_sharing: bool,
+    device_battery: Option<staya_proto::location::Battery>,
     /// Последний собственный замер: из него пакеты при смене режима или точности
     /// без нового замера (§7.4). Только в зашифрованной базе устройства.
     own: Option<location::Location>,
@@ -271,6 +273,8 @@ impl Friends {
                 nick: String::new(),
                 avatar: vec![],
             }),
+            battery_sharing: load_json(store, "battery_sharing")?.unwrap_or(false),
+            device_battery: None,
             sharing: load_json(store, location::SHARING_RECORD)?.unwrap_or_default(),
             own: load_json(store, location::OWN_RECORD)?.unwrap_or_default(),
             held: load_json(store, location::HELD_RECORD)?.unwrap_or_default(),
@@ -294,6 +298,7 @@ impl Friends {
         save_json(store, FRIENDS_RECORD, &records)?;
         save_json(store, INVITES_RECORD, &self.invites)?;
         save_json(store, PROFILE_RECORD, &self.profile)?;
+        save_json(store, "battery_sharing", &self.battery_sharing)?;
         save_json(store, location::SHARING_RECORD, &self.sharing)?;
         save_json(store, location::OWN_RECORD, &self.own)?;
         save_json(store, location::HELD_RECORD, &self.held)?;

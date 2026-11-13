@@ -110,6 +110,7 @@ object LocationShare {
             if (!isEnabled(app)) return@execute
             val core = AppCore.openBlocking(app) ?: return@execute
             val sync = Net.bind(core)?.second
+            runCatching { DeviceBattery.refresh(app, core) }
             if (runCatching { sender.onFix(core, sync, fix) }.getOrDefault(false)) recordSent(app)
             pollMailbox(app, core, sync)
         }
@@ -122,6 +123,7 @@ object LocationShare {
             if (!isEnabled(app)) return@execute
             val core = AppCore.openBlocking(app) ?: return@execute
             val sync = Net.bind(core)?.second
+            runCatching { DeviceBattery.refresh(app, core) }
             if (runCatching { sender.flushHeld(core, sync) }.getOrDefault(false)) recordSent(app)
         }
     }

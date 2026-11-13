@@ -321,3 +321,19 @@ padding       нули до размера корзины
 | Частота пакетов в покое (призрак, заморозка) | 15 минут (уточняется этапом 1) |
 | Сетка `Approx` | 0,01° по широте |
 | Итерации отпечатка | 5200 |
+
+### Optional E2E battery extension (v1 compatible)
+
+The location plaintext stays exactly 48 bytes and its encrypted envelope stays 160
+bytes. Flag bit 0 at offset 20 (big-endian u16) means battery is present; bit 1 means
+charging, only when bit 0 is set. Byte 22 is the percentage (0..100); bytes 23..47
+remain zero. Legacy readers ignore flags/reserved bytes. Legacy zero padding means
+unknown battery, never 0 percent. Unknown flag bits remain ignored. Invalid optional
+battery values are ignored without discarding a valid location. Hidden and Frozen
+packets never carry battery and receivers do not expose telemetry from those modes.
+
+Battery sharing is opt-in and stored encrypted locally. Battery uses the latest
+Megolm location slot, not the Olm control queue, so it does not add history, traffic
+or large Olm message gaps. It is refreshed only alongside ordinary location sends.
+Turning sharing off clears the value in the next packet. Status is a separate future
+control-message extension; it must not turn frequent battery updates into Olm traffic.

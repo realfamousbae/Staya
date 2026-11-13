@@ -84,6 +84,7 @@ fn needles(e7: i32) -> Vec<String> {
 fn needles_match_real_plaintext() {
     use staya_proto::location::{LocationKind, LocationPayload};
     let plain = LocationPayload {
+        battery: None,
         kind: LocationKind::Exact,
         lat_e7: ALICE.0,
         lon_e7: ALICE.1,
@@ -168,6 +169,7 @@ fn traffic_scanner_finds_leaked_plaintext() {
     let token = [0x5a; 16];
     let n = traffic_needles(&token);
     let payload = LocationPayload {
+        battery: None,
         kind: LocationKind::Exact,
         lat_e7: BOB.0,
         lon_e7: BOB.1,

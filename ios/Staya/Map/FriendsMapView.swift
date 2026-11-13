@@ -13,12 +13,14 @@ struct MapFocus: Equatable {
 func locationStatus(_ friend: FriendView, now: Int64) -> String? {
     guard let loc = friend.location else { return nil }
     let age = MapMath.ageLabel(now: now, timestamp: loc.timestamp)
+    let status: String
     switch loc.kind {
-    case .exact: return age
-    case .approx: return "примерно · \(age)"
-    case .frozen: return "позиция заморожена · \(age)"
-    case .hidden: return "скрыл(а) позицию"
+    case .exact: status = age
+    case .approx: status = "примерно · \(age)"
+    case .frozen: status = "позиция заморожена · \(age)"
+    case .hidden: status = "скрыл(а) позицию"
     }
+    return status + (loc.batteryPercent.map { " · \($0)%" + (loc.charging ? " ⚡" : "") } ?? "")
 }
 
 /// Карта друзей (задачи 4.4, 5.2): стиль и тайлы со своего сервера; маркер — аватар в
