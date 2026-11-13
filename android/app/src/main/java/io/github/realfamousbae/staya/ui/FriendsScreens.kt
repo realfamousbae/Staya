@@ -289,6 +289,11 @@ private fun SettingsScreen(core: StayaCore, nick: String, server: String) {
     DarkScreen("настройки", onBack = ::home) {
         Message()
         SharingCard(core)
+        SectionTitle("блокировка")
+        val activity = androidx.activity.compose.LocalActivity.current
+        val lock = io.github.realfamousbae.staya.secure.AppLock
+        ListRow("Блокировка приложения", if (lock.enabled) "Включена — биометрия или код телефона" else "Выключена", enabled = !lock.busy) { activity?.let { lock.change(it) } }
+        lock.message?.let { Text(it, color = Ink.mist) }
         SectionTitle("аккаунт")
         ListRow("Ник", nick)
         ListRow("Сервер", server)

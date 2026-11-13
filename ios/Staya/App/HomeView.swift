@@ -233,6 +233,8 @@ private struct ScreenSheet: View {
             DarkScreen(title: "настройки", onBack: { dismiss() }) {
                 if let message = model.message { MessageCard(message) { model.message = nil } }
                 SharingSection(core: core)
+                SectionTitle("блокировка")
+                AppLockSetting()
                 SectionTitle("аккаунт")
                 ListRow("Ник", nick)
                 ListRow("Сервер", server)
@@ -403,6 +405,19 @@ private struct ShowQrView: View {
                 }
                 Pill(text: "Новый код") { model.invite(.qr) }
             }
+        }
+    }
+}
+
+private struct AppLockSetting: View {
+    @State private var lock = AppLock.shared
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button { lock.change() } label: {
+                ListRow("Блокировка приложения", lock.enabled ? "Включена — биометрия или код телефона" : "Выключена")
+            }
+            .disabled(lock.busy)
+            if let message = lock.message { Text(message).font(.footnote).foregroundStyle(Ink.mist) }
         }
     }
 }

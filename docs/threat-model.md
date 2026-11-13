@@ -66,3 +66,12 @@
 - Биометрическая блокировка приложения и защита от просмотра на разблокированном телефоне (этап 5).
 - Защита от перебора ID аккаунтов и спама запросами дружбы (частично — rate limiting и код приглашения на сервер в бете).
 - Нужен ли cover traffic, чтобы скрыть ритм движения.
+
+## Optional application screen lock
+
+System biometrics or the device passcode protect foreground access after backgrounding.
+Changing the setting requires authentication. This is a UI lock: Keychain/Keystore
+access for background location retains the existing policy. It does not protect
+against a compromised OS. Android FLAG_SECURE blocks screenshots while enabled;
+iOS covers all app windows for app-switcher snapshots but cannot prohibit screenshots
+of an active app. Cancelled or stale authentication callbacks must not unlock the UI.
