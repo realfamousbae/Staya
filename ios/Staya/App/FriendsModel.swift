@@ -200,6 +200,26 @@ final class FriendsModel {
     }
 
     /// Удаление: сессии уничтожаются, слот в его ящике удаляется, другу — уведомление.
+    func requestLocation(_ friend: FriendView) {
+        guard let core else { return }
+        let sync = self.sync
+        busy = true
+        Task {
+            defer { busy = false }
+            do {
+                let result = try await queue.run {
+                    let queued = try core.requestLocation(friend: friend.accountId, now: Int64(Date().timeIntervalSince1970))
+                    var sent = false
+                    if queued, let sync { do { try await sync.flush(); sent = true } catch {} }
+                    return (queued, sent)
+                }
+                if !result.0 { message = "Запрос уже отправлялся. Дождись свежей позиции друга." }
+                else if result.1 { message = "Запрос передан на отправку. Ответ зависит от связи и настроек друга." }
+                else { message = "Запрос сохранён. Отправим при восстановлении связи." }
+            } catch { message = AppModel.describe(error) }
+        }
+    }
+
     func remove(_ friend: FriendView) {
         guard let core else { return }
         let sync = self.sync

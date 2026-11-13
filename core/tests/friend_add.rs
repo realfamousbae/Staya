@@ -603,3 +603,190 @@ fn short_status_updates_persist_and_can_be_cleared() {
     bob.sync(&mut server, T0 + 10);
     assert_eq!(bob.friends.list()[0].status.as_deref(), Some(""));
 }
+
+#[test]
+fn fresh_location_requests_require_opt_in_and_respect_privacy_modes_and_expiry() {
+    for mode in [
+        "off", "ghost", "frozen", "hidden", "stale", "future", "allowed",
+    ] {
+        let (mut alice, mut bob, mut server) = befriend(InviteMethod::Qr);
+        if mode != "off" {
+            bob.friends
+                .set_allow_location_requests(&bob.store, true)
+                .unwrap();
+        }
+        if mode == "ghost" {
+            bob.friends.set_ghost(&bob.store, true).unwrap();
+        }
+        if mode == "hidden" {
+            bob.friends
+                .set_precision(
+                    &bob.store,
+                    &alice.id(),
+                    staya_core::friends::Precision::Hidden,
+                )
+                .unwrap();
+        }
+        if mode == "frozen" {
+            bob.friends
+                .set_frozen(
+                    &bob.store,
+                    Some(staya_core::friends::Location {
+                        lat_e7: 0,
+                        lon_e7: 0,
+                        accuracy_m: 10,
+                        timestamp: T0,
+                    }),
+                )
+                .unwrap();
+        }
+        let (sent, received) = match mode {
+            "stale" => (T0, T0 + 1000),
+            "future" => (T0 + 1000, T0),
+            _ => (T0 + 10, T0 + 11),
+        };
+        assert!(
+            alice
+                .friends
+                .request_location(&alice.store, &bob.id(), sent)
+                .unwrap()
+        );
+        assert_eq!(alice.friends.pending_sends().envelopes[0].data.len(), 512);
+        alice.flush(&mut server);
+        let got = events(&bob.sync(&mut server, received));
+        assert_eq!(
+            got.iter()
+                .any(|event| matches!(event, Event::LocationRequested { .. })),
+            mode == "allowed",
+            "mode {mode}"
+        );
+    }
+}
+
+#[test]
+fn request_rate_limits_survive_restart_and_receiver_checks_a_modified_sender() {
+    let (mut alice, mut bob, mut server) = befriend(InviteMethod::Qr);
+    bob.friends
+        .set_allow_location_requests(&bob.store, true)
+        .unwrap();
+    assert!(
+        alice
+            .friends
+            .request_location(&alice.store, &bob.id(), T0 + 100)
+            .unwrap()
+    );
+    alice.flush(&mut server);
+    assert!(
+        events(&bob.sync(&mut server, T0 + 100))
+            .iter()
+            .any(|e| matches!(e, Event::LocationRequested { .. }))
+    );
+    alice.friends = Friends::load(&alice.store).unwrap();
+    bob.friends = Friends::load(&bob.store).unwrap();
+    assert!(
+        !alice
+            .friends
+            .request_location(&alice.store, &bob.id(), T0 + 160)
+            .unwrap()
+    );
+    // A malicious sender can bypass its own cooldown. Receiver must still enforce it.
+    let raw = alice.store.get_secret("friends").unwrap().unwrap();
+    let mut records: serde_json::Value = serde_json::from_slice(&raw).unwrap();
+    for record in records.as_array_mut().unwrap() {
+        record[1]["last_request_sent"] = serde_json::Value::Null;
+    }
+    alice
+        .store
+        .put_secret("friends", &serde_json::to_vec(&records).unwrap())
+        .unwrap();
+    alice.friends = Friends::load(&alice.store).unwrap();
+    assert!(
+        alice
+            .friends
+            .request_location(&alice.store, &bob.id(), T0 + 160)
+            .unwrap()
+    );
+    alice.flush(&mut server);
+    assert!(
+        !events(&bob.sync(&mut server, T0 + 160))
+            .iter()
+            .any(|e| matches!(e, Event::LocationRequested { .. }))
+    );
+}
+
+#[test]
+fn requests_from_multiple_friends_share_a_device_refresh_limit() {
+    let (mut alice, mut bob, mut server) = befriend(InviteMethod::Qr);
+    let mut carol = Device::new();
+    server.publish(&mut bob, T0);
+    let invitation = bob
+        .friends
+        .create_invite(
+            &bob.store,
+            &bob.account.identity(),
+            &staya_test_server(),
+            InviteMethod::Qr,
+            T0,
+        )
+        .unwrap();
+    carol
+        .friends
+        .accept_invite(
+            &carol.store,
+            &carol.account,
+            &invitation,
+            &server.claim(bob.id()),
+            T0,
+        )
+        .unwrap();
+    carol.flush(&mut server);
+    bob.sync(&mut server, T0);
+    carol.sync(&mut server, T0);
+    bob.friends
+        .set_allow_location_requests(&bob.store, true)
+        .unwrap();
+    alice
+        .friends
+        .request_location(&alice.store, &bob.id(), T0 + 100)
+        .unwrap();
+    alice.flush(&mut server);
+    assert!(
+        events(&bob.sync(&mut server, T0 + 100))
+            .iter()
+            .any(|e| matches!(e, Event::LocationRequested { .. }))
+    );
+    carol
+        .friends
+        .request_location(&carol.store, &bob.id(), T0 + 130)
+        .unwrap();
+    carol.flush(&mut server);
+    assert!(
+        !events(&bob.sync(&mut server, T0 + 130))
+            .iter()
+            .any(|e| matches!(e, Event::LocationRequested { .. }))
+    );
+    bob.friends
+        .prepare_location_update(
+            &bob.store,
+            Some(staya_core::friends::Location {
+                lat_e7: 0,
+                lon_e7: 0,
+                accuracy_m: 10,
+                timestamp: T0 + 400,
+            }),
+            T0 + 400,
+        )
+        .unwrap();
+    bob.flush(&mut server);
+    carol.fetch(&mut server, T0 + 400);
+    carol
+        .friends
+        .request_location(&carol.store, &bob.id(), T0 + 430)
+        .unwrap();
+    carol.flush(&mut server);
+    assert!(
+        events(&bob.sync(&mut server, T0 + 430))
+            .iter()
+            .any(|e| matches!(e, Event::LocationRequested { .. }))
+    );
+}

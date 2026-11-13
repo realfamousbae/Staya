@@ -363,3 +363,21 @@ out-of-order timestamps do not trigger transitions. Hidden/Frozen resets the
 baseline without an exit notification. Removing a friend also removes their places.
 Notifications are local, permission-based, and delivered only while the receiving
 app is processing fresh data. Without iOS push they can be delayed until a wake.
+
+### E2E fresh-location requests (optional control type 6)
+
+`LocationRequest` has v1 type byte 6 and an i64 requested-at Unix timestamp, padded
+to the existing 256-byte control bucket. Old clients drop/ack unknown types. Only
+active friends may request. The sender allows one request per friend per 5 minutes;
+an unanswered request is not queued again until a newer position is received, to
+avoid filling an offline friend's durable control queue. The receiver also limits each friend to 5 minutes and all friends together to one
+location refresh per minute. Timestamps older than 5 minutes or more than 30 seconds
+in the future are ignored. Rate-limit state is encrypted locally, not a location log.
+
+Responding requires a separate opt-in (off by default), enabled location sharing,
+platform background permission, and an unfrozen, non-ghost state with non-hidden
+precision for the requesting friend. The core emits a platform refresh event; it
+does not access GPS or override any privacy mode. No location is returned directly
+in a control reply. Fresh readings follow the ordinary encrypted slot/throttle path.
+The UI confirms only queueing/sending a request, never guarantees immediate delivery
+or a response; without APNs, iOS responds only at a subsequent allowed wake.

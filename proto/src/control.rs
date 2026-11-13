@@ -56,6 +56,9 @@ pub enum ControlMessage {
     },
     Profile(Profile),
     Unfriend,
+    LocationRequest {
+        requested_at: i64,
+    },
 }
 
 impl ControlMessage {
@@ -66,6 +69,7 @@ impl ControlMessage {
             Self::SessionShare { .. } => 3,
             Self::Profile(_) => 4,
             Self::Unfriend => 5,
+            Self::LocationRequest { .. } => 6,
         }
     }
 
@@ -98,6 +102,9 @@ impl ControlMessage {
             }
             Self::Profile(profile) => put_profile(&mut out, profile)?,
             Self::Unfriend => {}
+            Self::LocationRequest { requested_at } => {
+                out.extend_from_slice(&requested_at.to_be_bytes())
+            }
         }
         let bucket =
             control_bucket_for(out.len()).ok_or(ProtoError::TooLarge("control message"))?;
@@ -129,6 +136,9 @@ impl ControlMessage {
             },
             4 => Self::Profile(read_profile(&mut r)?),
             5 => Self::Unfriend,
+            6 => Self::LocationRequest {
+                requested_at: r.i64()?,
+            },
             other => return Err(ProtoError::UnknownType(other)),
         };
         Ok(msg)

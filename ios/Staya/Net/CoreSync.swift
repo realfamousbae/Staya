@@ -43,6 +43,9 @@ struct CoreSync: Sendable {
     /// Забирает ящик, обрабатывает, подтверждает и отправляет ответы.
     func sync() async throws -> [CoreEvent] {
         let processed = try core.processMailbox(mailboxJson: try await http.get("/v1/mailbox"), now: now)
+        if processed.events.contains(where: { if case .locationRequested = $0 { true } else { false } }) {
+            await MainActor.run { LocationEngine.shared.refresh() }
+        }
         await PlaceNotifications.post(core: core, events: processed.events)
         if let ack = processed.ackJson { _ = try await http.post("/v1/mailbox/ack", ack) }
         try await flush()
@@ -52,6 +55,9 @@ struct CoreSync: Sendable {
     /// Одно событие WebSocket: обработать, подтвердить, отправить ответы.
     func handleWsEvent(_ json: String) async throws -> [CoreEvent] {
         let processed = try core.processWsEvent(eventJson: json, now: now)
+        if processed.events.contains(where: { if case .locationRequested = $0 { true } else { false } }) {
+            await MainActor.run { LocationEngine.shared.refresh() }
+        }
         await PlaceNotifications.post(core: core, events: processed.events)
         if let ack = processed.ackJson { _ = try await http.post("/v1/mailbox/ack", ack) }
         try await flush()
