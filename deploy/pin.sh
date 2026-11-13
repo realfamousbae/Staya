@@ -11,8 +11,16 @@ if [ $# -ge 1 ]; then
   openssl pkey -in "$1" -pubout -outform DER | openssl dgst -sha256 -binary | b64url
 else
   DOMAIN="${STAYA_DOMAIN:?set STAYA_DOMAIN or pass a key file}"
-  openssl s_client -connect "$DOMAIN:443" -servername "$DOMAIN" </dev/null 2>/dev/null \
-    | openssl x509 -pubkey -noout \
+  # Python performs a verified handshake and closes cleanly; some macOS OpenSSL
+  # builds return a poll error on stdin EOF even after a successful handshake.
+  python3 - "$DOMAIN" <<'PYTLS' | openssl x509 -pubkey -noout \
     | openssl pkey -pubin -outform DER | openssl dgst -sha256 -binary | b64url
+import socket, ssl, sys
+context = ssl.create_default_context()
+context.minimum_version = ssl.TLSVersion.TLSv1_3
+with socket.create_connection((sys.argv[1], 443), timeout=15) as conn:
+    with context.wrap_socket(conn, server_hostname=sys.argv[1]) as tls:
+        print(ssl.DER_cert_to_PEM_cert(tls.getpeercert(binary_form=True)))
+PYTLS
 fi
 echo

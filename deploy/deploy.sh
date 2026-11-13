@@ -35,7 +35,7 @@ docker compose -f compose.next.yml pull
 if [ -f docker-compose.yml ] && docker compose ps --status running --services | grep -qx postgres; then
   install -d -m 700 backups
   dump="backups/before-${tag}-$(date -u +%Y%m%dT%H%M%SZ).sql"
-  (umask 077; docker compose exec -T postgres pg_dump -U staya staya > "$dump")
+  (umask 077; docker compose exec -T postgres pg_dump -U staya staya </dev/null > "$dump")
 fi
 # Retain last successful configuration and version (no data-volume deletion).
 [ ! -f .env ] || cp .env .env.previous
@@ -58,8 +58,8 @@ sed "s/{\$STAYA_DOMAIN}/$domain/g" site.next > /srv/proxy/sites/staya.candidate
 cd /srv/proxy
 [ ! -f sites/staya.caddy ] || cp sites/staya.caddy sites/staya.previous
 mv sites/staya.candidate sites/staya.caddy
-if ! { docker compose exec -T caddy caddy validate --config /etc/caddy/Caddyfile &&
-       docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile; }; then
+if ! { docker compose exec -T caddy caddy validate --config /etc/caddy/Caddyfile </dev/null &&
+       docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile </dev/null; }; then
   if [ -f sites/staya.previous ]; then mv sites/staya.previous sites/staya.caddy; else rm sites/staya.caddy; fi
   exit 1
 fi
