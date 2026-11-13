@@ -14,6 +14,7 @@ pub struct Profile {
     pub nick: String,
     /// JPEG; пустой — аватара нет.
     pub avatar: Vec<u8>,
+    pub status: String,
 }
 
 impl fmt::Debug for Profile {
@@ -21,6 +22,7 @@ impl fmt::Debug for Profile {
         f.debug_struct("Profile")
             .field("nick", &self.nick)
             .field("avatar_len", &self.avatar.len())
+            .field("status_len", &self.status.len())
             .finish()
     }
 }
@@ -141,7 +143,11 @@ fn put_profile(out: &mut Vec<u8>, p: &Profile) -> Result<(), ProtoError> {
         return Err(ProtoError::TooLarge("avatar"));
     }
     put_lp8(out, p.nick.as_bytes(), "nick")?;
-    put_lp16(out, &p.avatar, "avatar")
+    put_lp16(out, &p.avatar, "avatar")?;
+    if p.status.len() > 64 {
+        return Err(ProtoError::TooLarge("status"));
+    }
+    put_lp8(out, p.status.as_bytes(), "status")
 }
 
 fn read_profile(r: &mut Reader<'_>) -> Result<Profile, ProtoError> {
@@ -154,7 +160,14 @@ fn read_profile(r: &mut Reader<'_>) -> Result<Profile, ProtoError> {
     if avatar.len() > AVATAR_MAX_LEN {
         return Err(ProtoError::TooLarge("avatar"));
     }
+    let status = if r.is_empty() { &[][..] } else { r.lp8()? };
+    if status.len() > 64 {
+        return Err(ProtoError::TooLarge("status"));
+    }
+    let status =
+        std::str::from_utf8(status).map_err(|_| ProtoError::Invalid("status is not UTF-8"))?;
     Ok(Profile {
+        status: status.to_owned(),
         nick: nick.to_owned(),
         avatar: avatar.to_vec(),
     })
@@ -175,7 +188,11 @@ mod tests {
             "[a-zA-Zа-яА-Я0-9 ]{0,20}",
             proptest::collection::vec(any::<u8>(), 0..=AVATAR_MAX_LEN),
         )
-            .prop_map(|(nick, avatar)| Profile { nick, avatar })
+            .prop_map(|(nick, avatar)| Profile {
+                nick,
+                avatar,
+                status: String::new(),
+            })
     }
 
     fn message() -> impl Strategy<Value = ControlMessage> {
@@ -241,6 +258,7 @@ mod tests {
             sk: [0; 32],
             session_key: SessionKeyBytes(vec![0; MEGOLM_SESSION_KEY_LEN]),
             profile: Profile {
+                status: "s".repeat(64),
                 nick: "x".repeat(NICK_MAX_LEN),
                 avatar: vec![0; AVATAR_MAX_LEN],
             },
@@ -251,6 +269,7 @@ mod tests {
     #[test]
     fn oversized_fields_are_rejected() {
         let long_nick = Profile {
+            status: String::new(),
             nick: "x".repeat(NICK_MAX_LEN + 1),
             avatar: vec![],
         };
@@ -259,6 +278,7 @@ mod tests {
             Err(ProtoError::TooLarge("nick"))
         );
         let big_avatar = Profile {
+            status: String::new(),
             nick: String::new(),
             avatar: vec![0; AVATAR_MAX_LEN + 1],
         };
@@ -274,5 +294,46 @@ mod tests {
             session_key: SessionKeyBytes(vec![0xAB; 4]),
         };
         assert!(!format!("{msg:?}").contains("171"));
+    }
+}
+
+#[cfg(test)]
+mod status_tests {
+    use super::*;
+
+    #[test]
+    fn reads_legacy_profile_even_when_no_padding_byte_remains() {
+        // v1 Profile: version, type, empty nick, avatar length=251, avatar.
+        let mut old = vec![1, 4, 0, 0, 251];
+        old.resize(256, 0x7F);
+        let ControlMessage::Profile(profile) = ControlMessage::decode(&old).unwrap() else {
+            panic!()
+        };
+        assert!(profile.status.is_empty());
+        assert_eq!(profile.avatar.len(), 251);
+        old = vec![1, 4, 0, 0, 0];
+        old.resize(256, 0);
+        let ControlMessage::Profile(profile) = ControlMessage::decode(&old).unwrap() else {
+            panic!()
+        };
+        assert!(profile.status.is_empty());
+    }
+
+    #[test]
+    fn status_is_bounded_roundtrips_and_stays_out_of_debug_output() {
+        let profile = Profile {
+            nick: "friend".into(),
+            avatar: vec![],
+            status: "private-status".into(),
+        };
+        let message = ControlMessage::Profile(profile.clone());
+        let bytes = message.encode().unwrap();
+        assert_eq!(ControlMessage::decode(&bytes).unwrap(), message);
+        assert!(!format!("{profile:?}").contains("private-status"));
+        let too_long = Profile {
+            status: "x".repeat(65),
+            ..profile
+        };
+        assert!(ControlMessage::Profile(too_long).encode().is_err());
     }
 }

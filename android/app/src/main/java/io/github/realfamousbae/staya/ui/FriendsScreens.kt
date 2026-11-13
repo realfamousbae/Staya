@@ -267,7 +267,7 @@ private fun FriendRow(f: FriendView, now: Long, onShow: () -> Unit, onMore: () -
     }
     ListRow(
         title = f.nick ?: "Без имени",
-        subtitle = if (f.active && !f.verified) "$status · не проверен — сверьте код безопасности" else status,
+        subtitle = (if (f.active && !f.verified) "$status · не проверен — сверьте код безопасности" else status) + (f.status?.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""),
         subtitleColor = if (f.active && !f.verified) Ink.danger else if (fresh) Ink.fresh else Ink.mist,
         leading = { AvatarCircle(f) },
         trailing = {
@@ -290,6 +290,7 @@ private fun SettingsScreen(core: StayaCore, nick: String, server: String) {
         Message()
         SharingCard(core)
         BatterySharingSetting(core)
+        StatusSetting(core)
         SectionTitle("блокировка")
         val activity = androidx.activity.compose.LocalActivity.current
         val lock = io.github.realfamousbae.staya.secure.AppLock
@@ -540,4 +541,36 @@ private fun BatterySharingSetting(core: StayaCore) {
         }
     }
     if (error) Text("Не удалось изменить передачу заряда. Попробуй ещё раз.", color = Ink.mist)
+}
+
+@Composable
+private fun StatusSetting(core: StayaCore) {
+    var status by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(true) }
+    var failed by remember { mutableStateOf(false) }
+    val main = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
+    LaunchedEffect(core) {
+        io.github.realfamousbae.staya.net.Net.worker.execute {
+            val result = runCatching { core.myProfile().status }
+            main.post { status = result.getOrDefault(""); failed = result.isFailure; busy = false }
+        }
+    }
+    androidx.compose.material3.OutlinedTextField(
+        value = status, onValueChange = { status = it }, label = { Text("Статус для друзей") },
+        enabled = !busy, maxLines = 2, modifier = Modifier.fillMaxWidth(),
+    )
+    val tooLong = status.toByteArray(Charsets.UTF_8).size > 64
+    if (tooLong) Text("Сократи статус", color = Ink.mist)
+    SoftButton(onClick = {
+        busy = true
+        val next = status
+        io.github.realfamousbae.staya.net.Net.worker.execute {
+            val result = runCatching {
+                core.setStatus(next)
+                runCatching { io.github.realfamousbae.staya.net.Net.bind(core)?.second?.flush() }
+            }
+            main.post { failed = result.isFailure; busy = false }
+        }
+    }, enabled = !busy && !tooLong) { Text("Сохранить статус") }
+    if (failed) Text("Не удалось сохранить статус. Попробуй ещё раз.", color = Ink.mist)
 }

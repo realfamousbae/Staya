@@ -30,6 +30,7 @@ fn befriend(method: InviteMethod) -> (Device, Device, FakeServer) {
         .set_profile(
             &alice.store,
             Profile {
+                status: String::new(),
                 nick: "Алиса".into(),
                 avatar: vec![],
             },
@@ -39,6 +40,7 @@ fn befriend(method: InviteMethod) -> (Device, Device, FakeServer) {
         .set_profile(
             &bob.store,
             Profile {
+                status: String::new(),
                 nick: "Боб".into(),
                 avatar: vec![1, 2, 3],
             },
@@ -122,6 +124,7 @@ fn state_survives_restart_and_profile_updates_flow() {
         .set_profile(
             &alice.store,
             Profile {
+                status: String::new(),
                 nick: "Алиса 2".into(),
                 avatar: vec![],
             },
@@ -552,6 +555,7 @@ fn simultaneous_mutual_invites_do_not_wedge() {
         .set_profile(
             &alice.store,
             Profile {
+                status: String::new(),
                 nick: "A".into(),
                 avatar: vec![],
             },
@@ -566,6 +570,7 @@ fn simultaneous_mutual_invites_do_not_wedge() {
         .set_profile(
             &bob.store,
             Profile {
+                status: String::new(),
                 nick: "B".into(),
                 avatar: vec![],
             },
@@ -576,4 +581,25 @@ fn simultaneous_mutual_invites_do_not_wedge() {
         events(&alice.sync(&mut server, T0 + 11)),
         vec![Event::ProfileUpdated { friend: bob.id() }]
     );
+}
+
+#[test]
+fn short_status_updates_persist_and_can_be_cleared() {
+    let (mut alice, mut bob, mut server) = befriend(InviteMethod::Qr);
+    let mut profile = alice.friends.profile();
+    profile.status = "On the way".into();
+    alice
+        .friends
+        .set_profile(&alice.store, profile.clone())
+        .unwrap();
+    alice.flush(&mut server);
+    bob.sync(&mut server, T0 + 5);
+    assert_eq!(bob.friends.list()[0].status.as_deref(), Some("On the way"));
+    bob.friends = Friends::load(&bob.store).unwrap();
+    assert_eq!(bob.friends.list()[0].status.as_deref(), Some("On the way"));
+    profile.status.clear();
+    alice.friends.set_profile(&alice.store, profile).unwrap();
+    alice.flush(&mut server);
+    bob.sync(&mut server, T0 + 10);
+    assert_eq!(bob.friends.list()[0].status.as_deref(), Some(""));
 }

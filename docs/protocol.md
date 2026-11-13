@@ -337,3 +337,13 @@ Megolm location slot, not the Olm control queue, so it does not add history, tra
 or large Olm message gaps. It is refreshed only alongside ordinary location sends.
 Turning sharing off clears the value in the next packet. Status is a separate future
 control-message extension; it must not turn frequent battery updates into Olm traffic.
+
+### Optional short status in v1 profiles
+
+Append `lp8(status_utf8)` after the avatar in every profile (Profile, FriendRequest,
+FriendAccept). The status is at most 64 UTF-8 bytes, may be empty to clear it, and
+is sent only on manual changes or friendship setup, under Olm. New readers interpret
+old zero padding or an exactly full legacy body as an empty status. Old readers
+ignore the appended field like padding. Bucket selection includes the new field;
+the maximum profile still fits 9216 bytes. No new message type, server field or
+plaintext metadata is introduced. Existing nick/avatar updates preserve status.

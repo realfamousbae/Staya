@@ -15,7 +15,6 @@ use staya_proto::api::{
     MailboxResponse, OutgoingEnvelope, SendRequest, SendResponse, VerifyRequest, VerifyResponse,
     WsEvent,
 };
-use staya_proto::control::Profile;
 use staya_proto::invite::{Invite, InviteMethod as ProtoInviteMethod, ServerRef};
 use staya_proto::location::{LocationKind as ProtoLocationKind, LocationPayload};
 
@@ -33,8 +32,9 @@ struct Inner {
 }
 
 /// Свой профиль, который друзья получают по E2E (§6).
-#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+#[derive(Clone, PartialEq, Eq, uniffi::Record)]
 pub struct MyProfile {
+    pub status: String,
     pub nick: String,
     pub avatar: Vec<u8>,
 }
@@ -106,12 +106,13 @@ pub struct InviteInfo {
     pub method: InviteMethod,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+#[derive(Clone, PartialEq, Eq, uniffi::Record)]
 pub struct FriendView {
     pub account_id: String,
     pub active: bool,
     pub verified: bool,
     pub nick: Option<String>,
+    pub status: Option<String>,
     pub avatar: Option<Vec<u8>>,
     pub precision: Precision,
     /// Последняя принятая позиция друга; у `Hidden` координат нет.
@@ -321,16 +322,28 @@ impl StayaCore {
     pub fn my_profile(&self) -> Result<MyProfile, CoreError> {
         let p = self.lock()?.friends.profile();
         Ok(MyProfile {
+            status: p.status,
             nick: p.nick,
             avatar: p.avatar,
         })
     }
 
     /// Ник — до 64 байт UTF-8, аватар — до 8 КБ (protocol §6); иначе ошибка.
+    pub fn set_status(&self, status: String) -> Result<(), CoreError> {
+        let mut g = self.lock()?;
+        let Inner { store, friends, .. } = &mut *g;
+        let mut profile = friends.profile();
+        profile.status = status;
+        friends.set_profile(store, profile)
+    }
+
     pub fn set_profile(&self, nick: String, avatar: Vec<u8>) -> Result<(), CoreError> {
         let mut g = self.lock()?;
         let Inner { store, friends, .. } = &mut *g;
-        friends.set_profile(store, Profile { nick, avatar })
+        let mut profile = friends.profile();
+        profile.nick = nick;
+        profile.avatar = avatar;
+        friends.set_profile(store, profile)
     }
 
     /// Ссылка `staya://add?...` для QR или отправки другу — с сервером из
@@ -562,6 +575,7 @@ impl StayaCore {
                 account_id: f.account_id.to_b64(),
                 active: f.state == FriendState::Active,
                 verified: f.verified,
+                status: f.status,
                 nick: f.nick,
                 avatar: f.avatar,
                 precision: g.friends.precision(&f.account_id).unwrap_or_default(),
@@ -789,4 +803,20 @@ fn to_json<T: serde::Serialize>(value: &T) -> Result<String, CoreError> {
 
 fn from_json<T: serde::de::DeserializeOwned>(json: &str) -> Result<T, CoreError> {
     serde_json::from_str(json).map_err(|_| CoreError::Invalid("server response"))
+}
+
+impl std::fmt::Debug for MyProfile {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MyProfile")
+            .field("status_len", &self.status.len())
+            .finish_non_exhaustive()
+    }
+}
+impl std::fmt::Debug for FriendView {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FriendView")
+            .field("account_id", &self.account_id)
+            .field("location", &self.location)
+            .finish_non_exhaustive()
+    }
 }
