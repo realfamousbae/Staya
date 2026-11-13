@@ -77,6 +77,17 @@ impl Friends {
         Ok(())
     }
 
+    /// Reconcile a native opt-out before any transport consumes the outbox.
+    pub fn enforce_sharing_disabled(&mut self, store: &Store, now: i64) -> Result<bool, CoreError> {
+        if self.sharing.ghost && !self.outbox.has_unsafe_locations() {
+            return Ok(false);
+        }
+        self.sharing.ghost = true;
+        self.outbox.clear_locations();
+        self.prepare_location_update(store, None, now)?;
+        Ok(true)
+    }
+
     pub fn sharing(&self) -> Sharing {
         self.sharing
     }
@@ -162,6 +173,8 @@ impl Friends {
                 kind: EnvelopeKind::Location,
                 data: envelope.0.to_vec(),
             });
+            self.outbox
+                .mark_location_hidden(&to, payload.kind == LocationKind::Hidden);
         }
         self.save(store)
     }

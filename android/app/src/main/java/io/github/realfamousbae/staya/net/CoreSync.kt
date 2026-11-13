@@ -7,7 +7,7 @@ import uniffi.staya_core.StayaCore
  * Сеть вокруг ядра по правилам protocol §8.2: ядро готовит и разбирает JSON,
  * здесь — только запросы. Блокирующий, не на главном потоке.
  */
-class CoreSync(private val core: StayaCore, private val http: StayaClient) {
+class CoreSync(private val core: StayaCore, private val http: StayaClient, private val sharingAllowed: () -> Boolean = { io.github.realfamousbae.staya.location.NativeSharingConsent.allowed() }) {
     private fun now() = System.currentTimeMillis() / 1000
 
     /** Пополняет одноразовые ключи на сервере (§4.3). */
@@ -32,6 +32,7 @@ class CoreSync(private val core: StayaCore, private val http: StayaClient) {
 
     /** Удаления слотов, затем один POST со всеми конвертами, затем `completeSend`. */
     fun flush() {
+        if (!sharingAllowed()) core.enforceSharingDisabled(now())
         val batch = core.pendingSends()
         for (friend in batch.deleteSlots) {
             http.delete("/v1/slots/$friend")

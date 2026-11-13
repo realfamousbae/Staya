@@ -79,6 +79,17 @@ class StayaClientTest {
 
     private fun keyCount(c: StayaClient) = c.get("/v1/keys/count")
 
+    @Test
+    fun nativeOptOutReconcilesCoreBeforeAnyOutboxReadOrNetworkRequest() {
+        val core = core(listOf(pin(leaf)))
+        assertTrue(!core.sharing().ghost)
+        val sync = CoreSync(core, client(core), sharingAllowed = { false })
+        sync.flush()
+        assertTrue(core.sharing().ghost)
+        sync.flush()
+        assertEquals(0, server.requestCount)
+    }
+
     // --- Правило доверия ---------------------------------------------------
 
     @Test

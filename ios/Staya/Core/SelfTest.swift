@@ -95,7 +95,7 @@ enum SelfTest {
         // Сервер — из приглашения; адрес подключения для симулятора — свой.
         _ = try core.setServerFromLink(uri: invite)
         let client = try StayaClient(core: core, baseURL: server)
-        let sync = CoreSync(core: core, http: client)
+        let sync = CoreSync(core: core, http: client, sharingAllowed: { true })
         try await sync.publishKeys()
         try await sync.accept(invite)
 

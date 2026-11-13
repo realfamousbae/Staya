@@ -85,3 +85,13 @@ Local OS notifications retain only the latest transition per place; with screen
 locking enabled the body is generic. Android lock-screen visibility is private.
 OS-level notification history and user-controlled preview settings remain outside
 app control. Alerts depend on receiving fresh data, not guaranteed background wake.
+
+## Native sharing consent before every flush
+
+Native user consent is authoritative even if the process dies between persisting
+an off switch and updating the encrypted core state. Every native flush must
+reconcile disabled sharing before reading the outbox. Unsafe queued locations,
+including legacy entries without safety metadata, are replaced by Hidden packets
+atomically with ghost state. Already safe Hidden retries remain unchanged, so
+privacy mode does not introduce periodic traffic. Test transports explicitly
+inject synthetic consent and do not enable real GPS to exercise this path.

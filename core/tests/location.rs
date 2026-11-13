@@ -507,3 +507,86 @@ fn battery_is_opt_in_latest_only_and_withheld_for_hidden_and_frozen() {
     assert_eq!(last_location(&events, alice.id()).unwrap().battery, None);
     assert!(!Friends::load(&alice.store).unwrap().battery_sharing());
 }
+
+#[test]
+fn native_opt_out_replaces_a_persisted_precise_packet_even_after_ghost_flag_was_saved() {
+    for saved_ghost in [false, true] {
+        let (mut alice, mut bob, mut server) = setup();
+        alice
+            .friends
+            .prepare_location_update(&alice.store, Some(HOME), T0 + 10)
+            .unwrap();
+        if saved_ghost {
+            alice.friends.set_ghost(&alice.store, true).unwrap();
+        }
+        // Simulate process death before the native off switch queued its Hidden packet.
+        alice.friends = Friends::load(&alice.store).unwrap();
+        assert!(
+            alice
+                .friends
+                .enforce_sharing_disabled(&alice.store, T0 + 20)
+                .unwrap()
+        );
+        let ids: Vec<_> = alice
+            .friends
+            .pending_sends()
+            .envelopes
+            .iter()
+            .map(|e| e.id)
+            .collect();
+        assert!(
+            !alice
+                .friends
+                .enforce_sharing_disabled(&alice.store, T0 + 30)
+                .unwrap()
+        );
+        assert_eq!(
+            alice
+                .friends
+                .pending_sends()
+                .envelopes
+                .iter()
+                .map(|e| e.id)
+                .collect::<Vec<_>>(),
+            ids
+        );
+        alice.flush(&mut server);
+        let p = last_location(&bob.fetch(&mut server, T0 + 30), alice.id()).unwrap();
+        assert_eq!(
+            (p.kind, p.lat_e7, p.lon_e7, p.battery),
+            (LocationKind::Hidden, 0, 0, None)
+        );
+    }
+}
+
+#[test]
+fn legacy_outbox_without_safety_metadata_is_reconciled_once() {
+    let (mut alice, mut bob, mut server) = setup();
+    alice
+        .friends
+        .prepare_location_update(&alice.store, Some(HOME), T0 + 10)
+        .unwrap();
+    let raw = alice.store.get_secret("outbox").unwrap().unwrap();
+    let mut value: serde_json::Value = serde_json::from_slice(&raw).unwrap();
+    for item in value["locations"].as_array_mut().unwrap() {
+        item.as_object_mut().unwrap().remove("hidden");
+    }
+    alice
+        .store
+        .put_secret("outbox", &serde_json::to_vec(&value).unwrap())
+        .unwrap();
+    alice.friends = Friends::load(&alice.store).unwrap();
+    assert!(
+        alice
+            .friends
+            .enforce_sharing_disabled(&alice.store, T0 + 20)
+            .unwrap()
+    );
+    alice.flush(&mut server);
+    assert_eq!(
+        last_location(&bob.fetch(&mut server, T0 + 30), alice.id())
+            .unwrap()
+            .kind,
+        LocationKind::Hidden
+    );
+}
