@@ -212,7 +212,8 @@ impl Friends {
                 Event::Dropped { .. }
                 | Event::FriendAdded { .. }
                 | Event::FriendRemoved { .. }
-                | Event::ProfileUpdated { .. } => {}
+                | Event::ProfileUpdated { .. }
+                | Event::LocationRequested { .. } => {}
             }
         }
     }

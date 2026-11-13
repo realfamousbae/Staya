@@ -174,6 +174,9 @@ impl From<LocationPayload> for FriendLocation {
 /// Событие для UI.
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Enum)]
 pub enum CoreEvent {
+    LocationRequested {
+        friend: String,
+    },
     PlaceTransition {
         friend: String,
         place: String,
@@ -202,6 +205,9 @@ pub enum CoreEvent {
 impl From<Event> for CoreEvent {
     fn from(e: Event) -> Self {
         match e {
+            Event::LocationRequested { friend } => Self::LocationRequested {
+                friend: friend.to_b64(),
+            },
             Event::FriendAdded { friend } => Self::FriendAdded {
                 friend: friend.to_b64(),
             },
@@ -349,6 +355,20 @@ impl StayaCore {
         next.save(store)?;
         *places = next;
         Ok(())
+    }
+
+    pub fn allow_location_requests(&self) -> Result<bool, CoreError> {
+        Ok(self.lock()?.friends.allow_location_requests())
+    }
+    pub fn set_allow_location_requests(&self, allowed: bool) -> Result<(), CoreError> {
+        let mut g = self.lock()?;
+        let Inner { store, friends, .. } = &mut *g;
+        friends.set_allow_location_requests(store, allowed)
+    }
+    pub fn request_location(&self, friend: String, now: i64) -> Result<bool, CoreError> {
+        let mut g = self.lock()?;
+        let Inner { store, friends, .. } = &mut *g;
+        friends.request_location(store, &id(&friend)?, now)
     }
 
     pub fn battery_sharing(&self) -> Result<bool, CoreError> {

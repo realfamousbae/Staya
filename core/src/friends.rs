@@ -44,19 +44,30 @@ struct Outgoing {
 /// Что произошло в результате обработки входящего конверта.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Event {
+    LocationRequested {
+        friend: AccountId,
+    },
     /// Дружба установлена (с обеих сторон или подтверждена другом).
-    FriendAdded { friend: AccountId },
+    FriendAdded {
+        friend: AccountId,
+    },
     /// Друг удалил нас из друзей.
-    FriendRemoved { friend: AccountId },
+    FriendRemoved {
+        friend: AccountId,
+    },
     /// Друг обновил ник или аватар.
-    ProfileUpdated { friend: AccountId },
+    ProfileUpdated {
+        friend: AccountId,
+    },
     /// Новая позиция друга (в т. ч. `Hidden` — друг скрыл позицию от нас).
     LocationUpdated {
         friend: AccountId,
         payload: staya_proto::location::LocationPayload,
     },
     /// Конверт отброшен; причина — для отладки, без секретов.
-    Dropped { reason: &'static str },
+    Dropped {
+        reason: &'static str,
+    },
 }
 
 /// Результат обработки: события для UI. Ответы ушли в исходящую очередь.
@@ -124,6 +135,8 @@ struct Friend {
     precision: Precision,
     /// Последний принятый пакет позиции друга (для карты после перезапуска, §7.5).
     last_location: Option<LocationPayload>,
+    last_request_sent: Option<i64>,
+    last_request_received: Option<i64>,
 }
 
 /// Точность, с которой другу видна наша позиция (§7.3).
@@ -151,6 +164,10 @@ struct FriendRecord {
     /// Закодированный `LocationPayload` (§7.2).
     #[serde(default)]
     last_location: Option<Vec<u8>>,
+    #[serde(default)]
+    last_request_sent: Option<i64>,
+    #[serde(default)]
+    last_request_received: Option<i64>,
 }
 
 impl Friend {
@@ -161,6 +178,8 @@ impl Friend {
             state: self.state,
             verified: self.verified,
             profile: self.profile.clone(),
+            last_request_sent: self.last_request_sent,
+            last_request_received: self.last_request_received,
             olm: self
                 .olm
                 .iter()
@@ -190,6 +209,8 @@ impl Friend {
             state: r.state,
             verified: r.verified,
             profile: r.profile,
+            last_request_sent: r.last_request_sent,
+            last_request_received: r.last_request_received,
             olm: r
                 .olm
                 .into_iter()
@@ -256,6 +277,8 @@ pub struct Friends {
     profile: StoredProfile,
     sharing: location::Sharing,
     battery_sharing: bool,
+    allow_location_requests: bool,
+    last_request_refresh: Option<i64>,
     device_battery: Option<staya_proto::location::Battery>,
     /// Последний собственный замер: из него пакеты при смене режима или точности
     /// без нового замера (§7.4). Только в зашифрованной базе устройства.
@@ -280,6 +303,8 @@ impl Friends {
                 avatar: vec![],
             }),
             battery_sharing: load_json(store, "battery_sharing")?.unwrap_or(false),
+            allow_location_requests: load_json(store, "allow_location_requests")?.unwrap_or(false),
+            last_request_refresh: load_json(store, "last_request_refresh")?.unwrap_or_default(),
             device_battery: None,
             sharing: load_json(store, location::SHARING_RECORD)?.unwrap_or_default(),
             own: load_json(store, location::OWN_RECORD)?.unwrap_or_default(),
@@ -304,6 +329,12 @@ impl Friends {
         save_json(store, FRIENDS_RECORD, &records)?;
         save_json(store, INVITES_RECORD, &self.invites)?;
         save_json(store, PROFILE_RECORD, &self.profile)?;
+        save_json(
+            store,
+            "allow_location_requests",
+            &self.allow_location_requests,
+        )?;
+        save_json(store, "last_request_refresh", &self.last_request_refresh)?;
         save_json(store, "battery_sharing", &self.battery_sharing)?;
         save_json(store, location::SHARING_RECORD, &self.sharing)?;
         save_json(store, location::OWN_RECORD, &self.own)?;
@@ -461,6 +492,8 @@ impl Friends {
             inbound_megolm: vec![],
             precision: Precision::default(),
             last_location: None,
+            last_request_sent: None,
+            last_request_received: None,
         };
         let out = encrypt_control(&mut record, invite.account_id, &request)?;
         // Прошлая неподтверждённая попытка больше не нужна.
@@ -479,6 +512,52 @@ impl Friends {
     /// Свой профиль (ник и аватар).
     pub fn profile(&self) -> Profile {
         Profile::from(&self.profile)
+    }
+
+    pub fn allow_location_requests(&self) -> bool {
+        self.allow_location_requests
+    }
+    pub fn set_allow_location_requests(
+        &mut self,
+        store: &Store,
+        allowed: bool,
+    ) -> Result<(), CoreError> {
+        self.allow_location_requests = allowed;
+        self.save(store)
+    }
+    pub fn request_location(
+        &mut self,
+        store: &Store,
+        friend: &AccountId,
+        now: i64,
+    ) -> Result<bool, CoreError> {
+        if now < 0 {
+            return Err(CoreError::Invalid("request time"));
+        }
+        let record = self
+            .friends
+            .get_mut(&friend.0)
+            .ok_or(CoreError::UnknownFriend)?;
+        if record.state != FriendState::Active {
+            return Err(CoreError::UnknownFriend);
+        }
+        if let Some(last) = record.last_request_sent {
+            let refreshed = record
+                .last_location
+                .is_some_and(|position| position.timestamp > last);
+            if now.saturating_sub(last) < 300 || !refreshed {
+                return Ok(false);
+            }
+        }
+        let message = encrypt_control(
+            record,
+            *friend,
+            &ControlMessage::LocationRequest { requested_at: now },
+        )?;
+        record.last_request_sent = Some(now);
+        self.outbox.push(message);
+        self.save(store)?;
+        Ok(true)
     }
 
     pub fn set_profile(&mut self, store: &Store, profile: Profile) -> Result<(), CoreError> {
@@ -657,6 +736,32 @@ impl Friends {
                 // Пакет позиции мог прийти по WebSocket раньше подтверждения.
                 self.retry_held(handled);
             }
+            ControlMessage::LocationRequest { requested_at } => {
+                let fresh = requested_at >= 0
+                    && requested_at <= now.saturating_add(30)
+                    && now.saturating_sub(requested_at) <= 300;
+                let friend_ready = record
+                    .last_request_received
+                    .is_none_or(|last| now.saturating_sub(last) >= 300);
+                let device_ready = self
+                    .last_request_refresh
+                    .is_none_or(|last| now.saturating_sub(last) >= 60);
+                if fresh
+                    && friend_ready
+                    && device_ready
+                    && self.allow_location_requests
+                    && record.state == FriendState::Active
+                    && !self.sharing.ghost
+                    && self.sharing.frozen.is_none()
+                    && record.precision != Precision::Hidden
+                {
+                    record.last_request_received = Some(now);
+                    self.last_request_refresh = Some(now);
+                    handled
+                        .events
+                        .push(Event::LocationRequested { friend: friend_id });
+                }
+            }
             ControlMessage::Profile(profile) => {
                 record.profile = Some(StoredProfile::from(&profile));
                 handled
@@ -824,6 +929,8 @@ impl Friends {
             inbound_megolm: vec![inbound],
             precision: Precision::default(),
             last_location: None,
+            last_request_sent: None,
+            last_request_received: None,
         };
         self.outbox
             .push(encrypt_control(&mut record, account_id, &accept)?);

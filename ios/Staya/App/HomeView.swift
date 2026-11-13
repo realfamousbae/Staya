@@ -235,6 +235,7 @@ private struct ScreenSheet: View {
                 SharingSection(core: core)
                 BatterySharingSetting(core: core)
                 StatusSetting(core: core)
+                LocationRequestSetting(core: core)
                 PlacesSetting(core: core)
                 SectionTitle("блокировка")
                 AppLockSetting()
@@ -328,6 +329,7 @@ private struct FriendCard: View {
             if let message = model.message { MessageCard(message) { model.message = nil } }
 
             if friend.active {
+                SoftButton(text: "Запросить свежую позицию") { model.requestLocation(friend) }.disabled(model.busy)
                 SectionTitle("что видит этот друг")
                 ForEach([(Precision.exact, "Точную позицию"), (.approx, "Примерно (район ~1 км)"), (.hidden, "Ничего — «скрыл(а) позицию»")], id: \.1) { precision, title in
                     Button { model.setPrecision(friend, precision) } label: {
@@ -500,5 +502,31 @@ private struct PlacesSetting: View {
     var body: some View {
         ListRow("Места", "Локальные уведомления о приходе и уходе") { presented = true }
             .sheet(isPresented: $presented) { PlacesView(core: core).presentationBackground(Ink.ink) }
+    }
+}
+
+private struct LocationRequestSetting: View {
+    let core: StayaCore
+    @State private var allowed = false
+    @State private var busy = true
+    @State private var failed = false
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ListRow("Отвечать на запросы позиции", allowed ? "Включено — при разрешённой передаче позиции" : "Выключено", enabled: !busy) {
+                busy = true
+                let next = !allowed
+                Task {
+                    do { try await StayaNet.shared.queue.run { try core.setAllowLocationRequests(allowed: next) }; allowed = next; failed = false }
+                    catch { failed = true }
+                    busy = false
+                }
+            }
+            if failed { Text("Не удалось изменить настройку. Попробуй ещё раз.").font(.footnote).foregroundStyle(Ink.mist) }
+        }
+        .task {
+            do { allowed = try await StayaNet.shared.queue.run { try core.allowLocationRequests() } }
+            catch { failed = true }
+            busy = false
+        }
     }
 }

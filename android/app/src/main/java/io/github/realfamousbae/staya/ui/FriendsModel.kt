@@ -209,6 +209,23 @@ object FriendsModel {
     }
 
     /** Удаление: сессии уничтожаются, слот в его ящике удаляется, другу — уведомление. */
+    fun requestLocation(friend: FriendView) {
+        val core = core ?: return
+        busy = true
+        worker.execute {
+            runCatching {
+                val queued = core.requestLocation(friend.accountId, System.currentTimeMillis() / 1000)
+                val sent = queued && sync != null && runCatching { sync?.flush() }.isSuccess
+                message = when {
+                    !queued -> "Запрос уже отправлялся. Дождись свежей позиции друга."
+                    sent -> "Запрос передан на отправку. Ответ зависит от связи и настроек друга."
+                    else -> "Запрос сохранён. Отправим при восстановлении связи."
+                }
+            }.onFailure { message = AppModel.describeError(it as Exception) }
+            busy = false
+        }
+    }
+
     fun remove(friend: FriendView) {
         val core = core ?: return
         worker.execute {

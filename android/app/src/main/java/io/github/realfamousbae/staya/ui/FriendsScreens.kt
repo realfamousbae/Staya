@@ -292,6 +292,7 @@ private fun SettingsScreen(core: StayaCore, nick: String, server: String) {
         SharingCard(core)
         BatterySharingSetting(core)
         StatusSetting(core)
+        LocationRequestSetting(core)
         ListRow("Места", "Локальные уведомления о приходе и уходе") { FriendsModel.screen = FriendsModel.Screen.Places }
         SectionTitle("блокировка")
         val activity = androidx.activity.compose.LocalActivity.current
@@ -457,6 +458,7 @@ private fun FriendCard(initial: FriendView, code: String) {
         Message()
 
         if (friend.active) {
+            SoftButton(onClick = { FriendsModel.requestLocation(friend) }, enabled = !FriendsModel.busy) { Text("Запросить свежую позицию") }
             SectionTitle("что видит этот друг")
             listOf(
                 Precision.EXACT to "Точную позицию",
@@ -575,4 +577,27 @@ private fun StatusSetting(core: StayaCore) {
         }
     }, enabled = !busy && !tooLong) { Text("Сохранить статус") }
     if (failed) Text("Не удалось сохранить статус. Попробуй ещё раз.", color = Ink.mist)
+}
+
+@Composable
+private fun LocationRequestSetting(core: StayaCore) {
+    var allowed by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(true) }
+    var failed by remember { mutableStateOf(false) }
+    val main = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
+    LaunchedEffect(core) {
+        io.github.realfamousbae.staya.net.Net.worker.execute {
+            val result = runCatching { core.allowLocationRequests() }
+            main.post { allowed = result.getOrDefault(false); failed = result.isFailure; busy = false }
+        }
+    }
+    ListRow("Отвечать на запросы позиции", if (allowed) "Включено — при разрешённой передаче позиции" else "Выключено", enabled = !busy) {
+        busy = true
+        val next = !allowed
+        io.github.realfamousbae.staya.net.Net.worker.execute {
+            val result = runCatching { core.setAllowLocationRequests(next) }
+            main.post { if (result.isSuccess) allowed = next; failed = result.isFailure; busy = false }
+        }
+    }
+    if (failed) Text("Не удалось изменить настройку. Попробуй ещё раз.", color = Ink.mist)
 }
