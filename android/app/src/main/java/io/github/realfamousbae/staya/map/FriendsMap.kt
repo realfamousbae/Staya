@@ -60,7 +60,8 @@ class MapFocus(val friendId: String?, val nonce: Long = System.nanoTime())
  * они у экрана поверх неё.
  */
 @Composable
-fun FriendsMap(core: StayaCore, host: String, friends: List<FriendView>, focus: MapFocus?, modifier: Modifier = Modifier) {
+fun FriendsMap(core: StayaCore, host: String, friends: List<FriendView>, focus: MapFocus?, modifier: Modifier = Modifier, onPickPlace: ((Int, Int) -> Unit)? = null, pickedPlace: Pair<Int, Int>? = null) {
+    val pick by androidx.compose.runtime.rememberUpdatedState(onPickPlace)
     val context = LocalContext.current
     val dark = isSystemInDarkTheme()
     val density = LocalDensity.current.density
@@ -118,6 +119,29 @@ fun FriendsMap(core: StayaCore, host: String, friends: List<FriendView>, focus: 
                 style = s
             }
         }
+    }
+
+    DisposableEffect(map) {
+        val current = map
+        val listener = MapLibreMap.OnMapLongClickListener { point ->
+            pick?.invoke((point.latitude * 1e7).toInt(), (point.longitude * 1e7).toInt())
+            pick != null
+        }
+        current?.addOnMapLongClickListener(listener)
+        onDispose { current?.removeOnMapLongClickListener(listener) }
+    }
+    LaunchedEffect(style, pickedPlace) {
+        val s = style ?: return@LaunchedEffect
+        val sourceId = "staya-place-pick"
+        if (s.getSource(sourceId) == null) {
+            s.addSource(GeoJsonSource(sourceId))
+            s.addLayer(org.maplibre.android.style.layers.CircleLayer("staya-place-pick-dot", sourceId).withProperties(
+                PropertyFactory.circleRadius(9f), PropertyFactory.circleColor("#A9F0C7"),
+                PropertyFactory.circleStrokeColor("#0F0F12"), PropertyFactory.circleStrokeWidth(3f),
+            ))
+        }
+        val features = pickedPlace?.let { listOf(Feature.fromGeometry(Point.fromLngLat(it.second / 1e7, it.first / 1e7))) }.orEmpty()
+        s.getSourceAs<GeoJsonSource>(sourceId)?.setGeoJson(FeatureCollection.fromFeatures(features))
     }
 
     // Бейджи «N мин» устаревают: обновляем раз в минуту, пока карта на экране.

@@ -31,6 +31,8 @@ struct FriendsMapView: UIViewRepresentable {
     let friends: [FriendView]
     let now: Int64
     let focus: MapFocus?
+    var onPickPlace: ((Int32, Int32) -> Void)? = nil
+    var pickedPlace: (Int32, Int32)? = nil
     @Environment(\.colorScheme) private var colorScheme
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -48,6 +50,9 @@ struct FriendsMapView: UIViewRepresentable {
         view.logoView.isHidden = true
         view.attributionButtonPosition = .bottomLeft
         view.attributionButtonMargins = CGPoint(x: 8, y: 96)
+        if onPickPlace != nil {
+            view.addGestureRecognizer(UILongPressGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.choosePlace(_:))))
+        }
         view.delegate = context.coordinator
         context.coordinator.mapView = view
         context.coordinator.dark = dark
@@ -56,6 +61,9 @@ struct FriendsMapView: UIViewRepresentable {
 
     func updateUIView(_ view: MLNMapView, context: Context) {
         let c = context.coordinator
+        c.onPickPlace = onPickPlace
+        c.pickedPlace = pickedPlace
+        c.refreshPick()
         c.friends = friends
         c.now = now
         let dark = colorScheme == .dark
@@ -79,6 +87,35 @@ struct FriendsMapView: UIViewRepresentable {
         var now: Int64 = 0
         var dark = false
         var lastFocus: MapFocus?
+        var onPickPlace: ((Int32, Int32) -> Void)?
+        var pickedPlace: (Int32, Int32)?
+        @objc func choosePlace(_ gesture: UILongPressGestureRecognizer) {
+            guard gesture.state == .began, let mapView, let onPickPlace else { return }
+            let point = mapView.convert(gesture.location(in: mapView), toCoordinateFrom: mapView)
+            guard point.latitude.isFinite, point.longitude.isFinite,
+                  abs(point.latitude) <= 90, abs(point.longitude) <= 180 else { return }
+            onPickPlace(Int32(point.latitude * 1e7), Int32(point.longitude * 1e7))
+        }
+        func refreshPick() {
+            guard let style else { return }
+            let sourceId = "staya-place-pick"
+            if style.source(withIdentifier: sourceId) == nil {
+                let source = MLNShapeSource(identifier: sourceId, shape: nil, options: nil)
+                style.addSource(source)
+                let dot = MLNCircleStyleLayer(identifier: "staya-place-pick-dot", source: source)
+                dot.circleRadius = NSExpression(forConstantValue: 9)
+                dot.circleColor = NSExpression(forConstantValue: UIColor.systemMint)
+                dot.circleStrokeColor = NSExpression(forConstantValue: UIColor.black)
+                dot.circleStrokeWidth = NSExpression(forConstantValue: 3)
+                style.addLayer(dot)
+            }
+            let point = pickedPlace.map { value -> MLNPointFeature in
+                let point = MLNPointFeature()
+                point.coordinate = CLLocationCoordinate2D(latitude: Double(value.0) / 1e7, longitude: Double(value.1) / 1e7)
+                return point
+            }
+            (style.source(withIdentifier: sourceId) as? MLNShapeSource)?.shape = point
+        }
         /// 0 — камера не выставлена, 1 — показан регион, 2 — показаны друзья.
         private var fitted = 0
         /// Картинки маркеров по друзьям: бейдж меняется раз в минуту, старые убираем из стиля.
@@ -115,6 +152,7 @@ struct FriendsMapView: UIViewRepresentable {
             style.addLayer(symbols)
 
             self.style = style
+            refreshPick()
             refresh()
         }
 

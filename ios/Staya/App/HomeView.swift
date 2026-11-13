@@ -235,6 +235,7 @@ private struct ScreenSheet: View {
                 SharingSection(core: core)
                 BatterySharingSetting(core: core)
                 StatusSetting(core: core)
+                PlacesSetting(core: core)
                 SectionTitle("блокировка")
                 AppLockSetting()
                 SectionTitle("аккаунт")
@@ -490,5 +491,14 @@ private struct StatusSetting: View {
             catch { failed = true }
             busy = false
         }
+    }
+}
+
+private struct PlacesSetting: View {
+    let core: StayaCore
+    @State private var presented = false
+    var body: some View {
+        ListRow("Места", "Локальные уведомления о приходе и уходе") { presented = true }
+            .sheet(isPresented: $presented) { PlacesView(core: core).presentationBackground(Ink.ink) }
     }
 }

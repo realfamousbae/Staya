@@ -75,3 +75,13 @@ access for background location retains the existing policy. It does not protect
 against a compromised OS. Android FLAG_SECURE blocks screenshots while enabled;
 iOS covers all app windows for app-switcher snapshots but cannot prohibit screenshots
 of an active app. Cancelled or stale authentication callbacks must not unlock the UI.
+
+## Local places and notifications
+
+Named place coordinates, friend bindings and current membership are encrypted in
+local storage and never uploaded. The engine keeps no coordinate track, suppresses
+stale/imprecise/hidden/frozen data, and requires confirmation before transitions.
+Local OS notifications retain only the latest transition per place; with screen
+locking enabled the body is generic. Android lock-screen visibility is private.
+OS-level notification history and user-controlled preview settings remain outside
+app control. Alerts depend on receiving fresh data, not guaranteed background wake.

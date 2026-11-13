@@ -347,3 +347,19 @@ old zero padding or an exactly full legacy body as an empty status. Old readers
 ignore the appended field like padding. Bucket selection includes the new field;
 the maximum profile still fits 9216 bytes. No new message type, server field or
 plaintext metadata is introduced. Existing nick/avatar updates preserve status.
+
+### Local places (no wire change)
+
+A recipient may save named places for an active friend in the encrypted local store.
+Places are manually picked on our map; coordinates and membership never leave the
+recipient device. Only current membership, a candidate transition and the latest
+processed timestamp are retained, never a track. The default radius is 250 m;
+accepted radii are 100..5000 m. A transition requires two confident fresh fixes at
+least 30 seconds apart. Accuracy must fit entirely within the region to enter;
+exit uses radius + 50 m and subtracts accuracy. Uncertain fixes clear the candidate.
+The first confident observation establishes a baseline without a notification.
+Fixes older than 10 minutes, more than 5 minutes in the future, duplicates, and
+out-of-order timestamps do not trigger transitions. Hidden/Frozen resets the
+baseline without an exit notification. Removing a friend also removes their places.
+Notifications are local, permission-based, and delivered only while the receiving
+app is processing fresh data. Without iOS push they can be delayed until a wake.

@@ -26,6 +26,7 @@ object FriendsModel {
     sealed interface Screen {
         data object Home : Screen
         data object Settings : Screen
+        data object Places : Screen
         data class ShowQr(val uri: String, val expiresAt: Long) : Screen
         data class ShareLink(val uri: String) : Screen
         data object Scan : Screen
@@ -213,6 +214,7 @@ object FriendsModel {
         worker.execute {
             runCatching {
                 core.removeFriend(friend.accountId, true)
+                io.github.realfamousbae.staya.places.PlaceNotifications.cancelFriend(friend.accountId)
                 runCatching { sync?.flush() }
             }.onFailure { message = AppModel.describeError(it as Exception) }
             reload()
