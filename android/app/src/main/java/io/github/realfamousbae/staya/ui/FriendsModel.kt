@@ -25,6 +25,7 @@ import uniffi.staya_core.StayaCore
 object FriendsModel {
     sealed interface Screen {
         data object Home : Screen
+        data object Settings : Screen
         data class ShowQr(val uri: String, val expiresAt: Long) : Screen
         data class ShareLink(val uri: String) : Screen
         data object Scan : Screen

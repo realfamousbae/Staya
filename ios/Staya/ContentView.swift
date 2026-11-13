@@ -3,6 +3,7 @@ import SwiftUI
 
 /// Корень приложения: ядро открывается лениво, затем онбординг или главный экран.
 struct ContentView: View {
+    @State private var lock = AppLock.shared
     @State private var core = AppCore.shared
     @State private var app = AppModel.shared
     @State private var friends = FriendsModel.shared
@@ -10,14 +11,22 @@ struct ContentView: View {
 
     var body: some View {
         NavigationStack {
-            content
+            if lock.locked { AppLockScreen() } else { content }
         }
         .tint(Ink.mint)
         .task { core.open() }
         // Ссылки staya://… из других приложений: только в поле онбординга или на подтверждение.
         .onOpenURL { url in app.pendingLink = DeepLink.parse(url.absoluteString) }
         .onChange(of: scenePhase) { _, phase in
-            if phase != .active { friends.stop() }
+            if phase != .active {
+                friends.stop()
+                lock.coverWindows()
+            }
+            if phase == .background {
+                lock.background()
+                friends.screen = nil
+            }
+            if phase == .active { lock.uncoverWindows() }
             // Открыли приложение — свежая точка друзьям (если передача включена).
             if phase == .active { LocationEngine.shared.refresh() }
         }

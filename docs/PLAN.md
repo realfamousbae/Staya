@@ -227,7 +227,9 @@ MVP — это минимум, при котором Staya уже можно п�
 ### Этап 5. Укрепление и развитие
 
 - [ ] 5.1 Android: передача не умирает молча. В бете позиция с Android застревала на часы и дни: убитый производителем сервис не перезапускался (перезапуск «липкого» сервиса из фона Android 12+ запрещает), экономный режим fused в покое отдавал старые точки из кэша (отбрасывались), а датчик значимого движения — единственный выход из покоя — есть не везде. Сторож `Watchdog` (AlarmManager, раз в 15 минут, срабатывает в Doze) поднимает сервис и просит свежий замер; покой — сбалансированный режим; сдвиг > 250 м в покое включает точный режим без датчика; старая точка — запрос свежей; придержанный замер уходит при остановке (как `SendThrottle` на iOS); диагностика без координат в карточке «Делиться позицией» (сервис жив, замер, отправка, ошибка, сторож, отброшенные пакеты)
-- [ ] 5.2 Интерфейс в стиле Blink: карта во весь экран, круглые кнопки поверх (настройки, друзья, центрировать, добавить), аватары-маркеры с бейджем давности, тёмные экраны настроек; без геокодирования места и погоды (координаты никуда не уходят) и без чатов. Android — сначала, iOS — следом
+- [ ] 5.2 Интерфейс в стиле Blink: карта во весь экран, круглые кнопки поверх (настройки, друзья, центрировать, добавить), аватары-маркеры с бейджем давности, тёмные экраны настроек; без геокодирования места и погоды (координаты никуда не уходят) и без чатов.
+  - [ ] 5.2a Android: тема `ui/Theme.kt` (чернильный хром, пилюли с градиентом, строчные жирные заголовки), главный экран — карта во весь экран с заголовком-состоянием («делюсь позицией» / «позиция скрыта» / «заморожено здесь»), круглые кнопки (настройки; друзья, показать всех, добавить), шторки друзей и добавления, экран настроек (передача, разрешения, диагностика, аккаунт), тёмные экраны QR, ссылки, сканера, подтверждения и карточки друга; маркер — аватар с бейджем давности; свои векторные иконки без новых зависимостей
+  - [ ] 5.2b iOS: то же
 - [ ] Внешнее ревью криптографии и модели угроз
 - [ ] Воспроизводимые сборки
 - [ ] Пуши: APNs (после покупки Apple Developer), на Android — UnifiedPush или FCM
@@ -274,3 +276,21 @@ MVP — это минимум, при котором Staya уже можно п�
 - [ ] Проверка второго сайта, перезагрузки, внешних портов и обмена на двух телефонах.
 
 Чистая база, имя sslip.io, прежний сервер не переносим. Доступ и ресурсы нового VPS проверены: x86_64, около 4 ГБ RAM. CI Rust с PostgreSQL 18, выпуск образа и проверка зависимостей прошли. На новом сервере проверены двусторонний обмен двух тестовых ядер, HTTPS и ресурсы карты, а также работа соседнего сайта при остановленном API Staya. После перезагрузки VPS сервисы поднялись автоматически, TLS-отпечаток сохранился. WebSocket через публичный TLS отклоняет запрос без авторизации. База не публикуется, API, тайлы и admin Caddy слушают loopback; внешний TCP-скан из текущей сети неоднозначен (соединения закрываются без ответа даже на произвольных портах), поэтому независимую внешнюю проверку портов не отмечаем выполненной. Проверка на телефонах остаётся отдельным шагом.
+
+## Next milestone: features and beta release (2026-11-13)
+
+Owner decisions: replace the missing Android signing key (old APK users must reinstall
+and create a new account); Android FCM without Analytics; iOS without APNs/TestFlight.
+
+- [ ] Screen lock with system biometrics/device passcode; keep background sharing working. Code is prepared separately; device verification remains pending.
+- [ ] E2E battery and short status for friends, opt-in battery sharing and legacy-client compatibility.
+- [ ] Places picked manually on our map; local enter/exit evaluation from fresh friend locations and local notifications. Never upload places or reverse-geocode coordinates.
+- [ ] Android FCM in a separate Firebase project without Analytics: wake-up signal only, no coordinates, names or profiles. Keep existing sync on devices without Play Services.
+- [ ] E2E fresh-location request from friends with rate limits; respect consent, ghost, freeze and per-friend precision. iOS can only respond on a subsequent wake without APNs.
+- [ ] Sender privacy: separately versioned delivery, compatible migration and updated threat model. Identifying Authorization on delivery does not achieve sealed sender.
+- [ ] Reproducible unsigned artifacts from independent repeat builds; check signatures separately.
+- [ ] External security audit: prepare materials and resolve findings. Self-review cannot substitute for an independent reviewer.
+- [ ] New APK/IPA beta with complete user-facing notes and an explicit Android signing-key transition warning.
+
+One PR per feature; protocol changes documented before implementation. Multi-device,
+federation, password-encrypted account backup and MLS remain long-term work.

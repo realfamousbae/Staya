@@ -13,8 +13,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -33,6 +33,9 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import io.github.realfamousbae.staya.map.MapMath
 import kotlinx.coroutines.delay
+import io.github.realfamousbae.staya.ui.Ink
+import io.github.realfamousbae.staya.ui.SectionTitle
+import io.github.realfamousbae.staya.ui.SoftButton
 import uniffi.staya_core.StayaCore
 
 /**
@@ -58,16 +61,18 @@ fun SharingCard(core: StayaCore) {
     }
     val single = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { resumes++ }
 
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        SectionTitle("передача")
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
                 Text("Делиться позицией", style = MaterialTheme.typography.titleMedium)
                 Text(
                     if (enabled) "Друзья видят, где ты" else "Выключено — друзья видят «скрыл(а) позицию»",
                     style = MaterialTheme.typography.bodySmall,
+                    color = Ink.mist,
                 )
             }
-            Switch(checked = enabled, onCheckedChange = { on ->
+            Switch(colors = switchColors(), checked = enabled, onCheckedChange = { on ->
                 if (!on) {
                     LocationShare.disable(context, core)
                     enabled = false
@@ -86,7 +91,7 @@ fun SharingCard(core: StayaCore) {
         var freezeError by remember { mutableStateOf(false) }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
-                Text("Заморозить позицию здесь")
+                Text("Заморозить позицию здесь", style = MaterialTheme.typography.titleMedium)
                 Text(
                     if (freezeError) {
                         "Пока нет ни одного замера — подожди, пока позиция определится."
@@ -96,9 +101,10 @@ fun SharingCard(core: StayaCore) {
                         "Друзья увидят последнюю точку, пока не снимешь"
                     },
                     style = MaterialTheme.typography.bodySmall,
+                    color = Ink.mist,
                 )
             }
-            Switch(checked = frozen, onCheckedChange = { on ->
+            Switch(colors = switchColors(), checked = frozen, onCheckedChange = { on ->
                 LocationShare.setFrozen(core, on) { ok ->
                     freezeError = on && !ok
                     if (ok) frozen = on
@@ -119,14 +125,15 @@ fun SharingCard(core: StayaCore) {
             Text(
                 "Чтобы позиция уходила, когда приложение закрыто, выбери «Разрешить всегда».",
                 style = MaterialTheme.typography.bodySmall,
+                    color = Ink.mist,
             )
             // Android 11+: система открывает настройки разрешения.
-            OutlinedButton(onClick = { single.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION) }) {
+            SoftButton(onClick = { single.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION) }) {
                 Text("Геолокация «Разрешить всегда»")
             }
         }
         if (!notifications && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            OutlinedButton(onClick = { single.launch(Manifest.permission.POST_NOTIFICATIONS) }) {
+            SoftButton(onClick = { single.launch(Manifest.permission.POST_NOTIFICATIONS) }) {
                 Text("Разрешить уведомление")
             }
         }
@@ -134,14 +141,16 @@ fun SharingCard(core: StayaCore) {
             Text(
                 "Без исключения из оптимизации батареи система может останавливать передачу.",
                 style = MaterialTheme.typography.bodySmall,
+                    color = Ink.mist,
             )
-            OutlinedButton(onClick = { requestBatteryExemption(context) }) { Text("Отключить оптимизацию батареи") }
+            SoftButton(onClick = { requestBatteryExemption(context) }) { Text("Отключить оптимизацию батареи") }
             Text(
                 "Xiaomi/Poco: «Автозапуск» — вкл, «Контроль активности» — «Нет ограничений». " +
                     "Samsung: «Батарея» — «Неограниченно», добавить в «Приложения, которые никогда не спят».",
                 style = MaterialTheme.typography.bodySmall,
+                    color = Ink.mist,
             )
-            OutlinedButton(onClick = {
+            SoftButton(onClick = {
                 context.startActivity(
                     Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, "package:${context.packageName}".toUri()),
                 )
@@ -185,7 +194,7 @@ private fun Diagnostics(resumes: Int) {
         if (d.drop != null) add("Пакет от друга отброшен: ${d.drop} (${ago(d.dropAt)})")
     }
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        lines.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+        lines.forEachIndexed { i, line -> Text(line, style = MaterialTheme.typography.bodySmall, color = if (i == 0 && !running) Ink.danger else Ink.mist) }
     }
 }
 
@@ -200,3 +209,12 @@ private fun requestBatteryExemption(context: Context) {
         Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, "package:${context.packageName}".toUri()),
     )
 }
+
+@Composable
+private fun switchColors() = SwitchDefaults.colors(
+    checkedThumbColor = Ink.ink,
+    checkedTrackColor = Ink.mint,
+    uncheckedThumbColor = Ink.mist,
+    uncheckedTrackColor = Ink.ink2,
+    uncheckedBorderColor = Ink.ink3,
+)
