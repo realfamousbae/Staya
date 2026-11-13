@@ -35,7 +35,7 @@ class DevExchangeTest {
             // Сервер — из приглашения; адрес подключения для эмулятора — свой.
             core.setServerFromLink(invite)
             val client = StayaClient(core, baseUrl = server!!)
-            val sync = CoreSync(core, client)
+            val sync = CoreSync(core, client, sharingAllowed = { true })
             sync.publishKeys()
             sync.accept(invite)
 

@@ -51,6 +51,8 @@ struct Item {
     id: u64,
     to: [u8; 16],
     data: Vec<u8>,
+    #[serde(default)]
+    hidden: bool,
 }
 
 impl Outbox {
@@ -59,6 +61,7 @@ impl Outbox {
             id: self.next_id,
             to: out.to.0,
             data: out.data,
+            hidden: false,
         };
         self.next_id += 1;
         match out.kind {
@@ -69,6 +72,18 @@ impl Outbox {
                 self.locations.push(item);
             }
         }
+    }
+
+    pub(super) fn mark_location_hidden(&mut self, recipient: &AccountId, hidden: bool) {
+        if let Some(item) = self.locations.iter_mut().find(|i| i.to == recipient.0) {
+            item.hidden = hidden;
+        }
+    }
+    pub(super) fn has_unsafe_locations(&self) -> bool {
+        self.locations.iter().any(|i| !i.hidden)
+    }
+    pub(super) fn clear_locations(&mut self) {
+        self.locations.clear();
     }
 
     pub(super) fn pending(&self) -> PendingSends {

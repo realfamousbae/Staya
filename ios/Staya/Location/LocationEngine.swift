@@ -30,7 +30,7 @@ final class LocationEngine: NSObject {
     private var lastMailboxPoll: Date?
     private var lastAuth: CLAuthorizationStatus?
 
-    private static let enabledKey = "location.sharing"
+    private nonisolated static let enabledKey = "location.sharing"
 
     override private init() {
         enabled = UserDefaults.standard.bool(forKey: Self.enabledKey)
@@ -52,6 +52,8 @@ final class LocationEngine: NSObject {
     /// Один свежий замер: при включении передачи, открытии приложения и смене
     /// разрешений. Без него друзьям до следующего пробуждения SLC ушла бы
     /// последняя сохранённая точка — она бывает давно устаревшей.
+    nonisolated static func sharingIsEnabled() -> Bool { UserDefaults.standard.bool(forKey: enabledKey) }
+
     func refresh() {
         guard enabled else { return }
         switch manager.authorizationStatus {

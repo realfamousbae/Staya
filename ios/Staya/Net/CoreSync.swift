@@ -6,6 +6,13 @@ import StayaCore
 struct CoreSync: Sendable {
     let core: StayaCore
     let http: StayaClient
+    private let sharingAllowed: @Sendable () -> Bool
+
+    init(core: StayaCore, http: StayaClient, sharingAllowed: @escaping @Sendable () -> Bool = { LocationEngine.sharingIsEnabled() }) {
+        self.core = core
+        self.http = http
+        self.sharingAllowed = sharingAllowed
+    }
 
     private var now: Int64 { Int64(Date().timeIntervalSince1970) }
 
@@ -31,6 +38,7 @@ struct CoreSync: Sendable {
 
     /// Удаления слотов, затем один POST со всеми конвертами, затем `completeSend`.
     func flush() async throws {
+        if !sharingAllowed() { _ = try core.enforceSharingDisabled(now: now) }
         let batch = try core.pendingSends()
         for friend in batch.deleteSlots {
             _ = try await http.delete("/v1/slots/\(friend)")

@@ -693,6 +693,12 @@ impl StayaCore {
         Ok(self.lock()?.friends.sharing())
     }
 
+    pub fn enforce_sharing_disabled(&self, now: i64) -> Result<bool, CoreError> {
+        let mut g = self.lock()?;
+        let Inner { store, friends, .. } = &mut *g;
+        friends.enforce_sharing_disabled(store, now)
+    }
+
     pub fn set_ghost(&self, ghost: bool) -> Result<(), CoreError> {
         let mut g = self.lock()?;
         let Inner { store, friends, .. } = &mut *g;
