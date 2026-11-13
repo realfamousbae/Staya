@@ -70,6 +70,7 @@ fun FriendsScreen(core: StayaCore, nick: String, server: String) {
     when (val s = FriendsModel.screen) {
         FriendsModel.Screen.Home -> FriendsHome(core, server)
         FriendsModel.Screen.Settings -> SettingsScreen(core, nick, server)
+        FriendsModel.Screen.Places -> io.github.realfamousbae.staya.places.PlacesScreen(core, server)
         is FriendsModel.Screen.ShowQr -> ShowQr(s.uri, s.expiresAt)
         is FriendsModel.Screen.ShareLink -> ShareLink(s.uri)
         FriendsModel.Screen.Scan -> Scan()
@@ -291,6 +292,7 @@ private fun SettingsScreen(core: StayaCore, nick: String, server: String) {
         SharingCard(core)
         BatterySharingSetting(core)
         StatusSetting(core)
+        ListRow("Места", "Локальные уведомления о приходе и уходе") { FriendsModel.screen = FriendsModel.Screen.Places }
         SectionTitle("блокировка")
         val activity = androidx.activity.compose.LocalActivity.current
         val lock = io.github.realfamousbae.staya.secure.AppLock

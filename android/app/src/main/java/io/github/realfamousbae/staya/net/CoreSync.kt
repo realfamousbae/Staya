@@ -44,6 +44,7 @@ class CoreSync(private val core: StayaCore, private val http: StayaClient) {
     /** Забирает ящик, обрабатывает, подтверждает и отправляет ответы. */
     fun sync(): List<CoreEvent> {
         val processed = core.processMailbox(http.get("/v1/mailbox"), now())
+        io.github.realfamousbae.staya.places.PlaceNotifications.post(core, processed.events)
         processed.ackJson?.let { http.post("/v1/mailbox/ack", it) }
         flush()
         return processed.events
@@ -52,6 +53,7 @@ class CoreSync(private val core: StayaCore, private val http: StayaClient) {
     /** Одно событие WebSocket: обработать, подтвердить, отправить ответы. */
     fun handleWsEvent(json: String): List<CoreEvent> {
         val processed = core.processWsEvent(json, now())
+        io.github.realfamousbae.staya.places.PlaceNotifications.post(core, processed.events)
         processed.ackJson?.let { http.post("/v1/mailbox/ack", it) }
         flush()
         return processed.events

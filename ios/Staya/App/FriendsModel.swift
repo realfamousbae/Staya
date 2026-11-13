@@ -207,6 +207,7 @@ final class FriendsModel {
             do {
                 try await queue.run {
                     try core.removeFriend(friend: friend.accountId, notify: true)
+                    await PlaceNotifications.cancelFriend(friend.accountId)
                     try? await sync?.flush()
                 }
             } catch {

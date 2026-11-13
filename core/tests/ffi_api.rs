@@ -832,3 +832,67 @@ fn nickname_updates_preserve_status_and_invalid_status_does_not_change_profile()
     assert!(core.set_status("x".repeat(65)).is_err());
     assert_eq!(core.my_profile().unwrap().status, "On the way");
 }
+
+#[test]
+fn places_are_recipient_only_and_emit_confirmed_transitions_across_restart() {
+    let mut server = JsonServer::default();
+    let (alice, bob) = (App::new(), App::new());
+    befriend(&alice, &bob, &mut server);
+    let place = bob
+        .core
+        .add_place(
+            alice.id.clone(),
+            "Private Home".into(),
+            HOME.lat_e7,
+            HOME.lon_e7,
+            250,
+        )
+        .unwrap();
+    assert!(bob.core.pending_sends().unwrap().request_json.is_none());
+    for (delta, offset) in [(10, 1_000_000), (40, 0)] {
+        alice
+            .core
+            .prepare_location_update(
+                Some(Location {
+                    lat_e7: HOME.lat_e7 + offset,
+                    timestamp: T0 + delta,
+                    ..HOME
+                }),
+                T0 + delta,
+            )
+            .unwrap();
+        alice.flush(&mut server);
+        let events = bob.sync(&mut server, T0 + delta);
+        assert!(
+            !events
+                .iter()
+                .any(|e| matches!(e, CoreEvent::PlaceTransition { .. }))
+        );
+    }
+    let bob = bob.reopen();
+    alice
+        .core
+        .prepare_location_update(
+            Some(Location {
+                timestamp: T0 + 80,
+                ..HOME
+            }),
+            T0 + 80,
+        )
+        .unwrap();
+    alice.flush(&mut server);
+    let events = bob.sync(&mut server, T0 + 80);
+    assert!(events.contains(&CoreEvent::PlaceTransition {
+        friend: alice.id.clone(),
+        place: place.id,
+        name: "Private Home".into(),
+        entered: true
+    }));
+    assert!(
+        !bob.sync(&mut server, T0 + 90)
+            .iter()
+            .any(|e| matches!(e, CoreEvent::PlaceTransition { .. }))
+    );
+    bob.core.remove_friend(alice.id, false).unwrap();
+    assert!(bob.core.list_places().unwrap().is_empty());
+}

@@ -29,6 +29,7 @@ struct Inner {
     account: LocalAccount,
     friends: Friends,
     server: Option<ServerBinding>,
+    places: crate::places::Places,
 }
 
 /// Свой профиль, который друзья получают по E2E (§6).
@@ -173,6 +174,12 @@ impl From<LocationPayload> for FriendLocation {
 /// Событие для UI.
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Enum)]
 pub enum CoreEvent {
+    PlaceTransition {
+        friend: String,
+        place: String,
+        name: String,
+        entered: bool,
+    },
     FriendAdded {
         friend: String,
     },
@@ -249,12 +256,14 @@ impl StayaCore {
         };
         let friends = Friends::load(&store)?;
         let server = ServerBinding::load(&store)?;
+        let places = crate::places::Places::load(&store)?;
         Ok(Arc::new(Self {
             inner: Mutex::new(Inner {
                 store,
                 account,
                 friends,
                 server,
+                places,
             }),
         }))
     }
@@ -304,6 +313,44 @@ impl StayaCore {
     // --- Друзья -----------------------------------------------------------
 
     /// Whether the user opted into E2E battery sharing.
+    pub fn list_places(&self) -> Result<Vec<crate::places::PlaceView>, CoreError> {
+        Ok(self.lock()?.places.list())
+    }
+    pub fn add_place(
+        &self,
+        friend: String,
+        name: String,
+        lat_e7: i32,
+        lon_e7: i32,
+        radius_m: u16,
+    ) -> Result<crate::places::PlaceView, CoreError> {
+        let mut g = self.lock()?;
+        let friend_id = id(&friend)?;
+        if !g
+            .friends
+            .list()
+            .iter()
+            .any(|f| f.account_id == friend_id && f.state == FriendState::Active)
+        {
+            return Err(CoreError::UnknownFriend);
+        }
+        let Inner { store, places, .. } = &mut *g;
+        let mut next = places.clone();
+        let view = next.add(friend, name, lat_e7, lon_e7, radius_m)?;
+        next.save(store)?;
+        *places = next;
+        Ok(view)
+    }
+    pub fn remove_place(&self, place: String) -> Result<(), CoreError> {
+        let mut g = self.lock()?;
+        let Inner { store, places, .. } = &mut *g;
+        let mut next = places.clone();
+        next.remove(&place);
+        next.save(store)?;
+        *places = next;
+        Ok(())
+    }
+
     pub fn battery_sharing(&self) -> Result<bool, CoreError> {
         Ok(self.lock()?.friends.battery_sharing())
     }
@@ -355,6 +402,7 @@ impl StayaCore {
             account,
             friends,
             server,
+            ..
         } = &mut *g;
         let server = server.as_ref().ok_or(CoreError::NoServer)?.server().clone();
         Ok(friends
@@ -398,6 +446,7 @@ impl StayaCore {
             account,
             friends,
             server,
+            ..
         } = &mut *g;
         // Ключ друга запрашивается у своего сервера: он должен быть сервером приглашения.
         match server {
@@ -601,8 +650,15 @@ impl StayaCore {
 
     pub fn remove_friend(&self, friend: String, notify: bool) -> Result<(), CoreError> {
         let mut g = self.lock()?;
-        let Inner { store, friends, .. } = &mut *g;
-        friends.remove_friend(store, &id(&friend)?, notify)
+        let Inner {
+            store,
+            friends,
+            places,
+            ..
+        } = &mut *g;
+        friends.remove_friend(store, &id(&friend)?, notify)?;
+        places.remove_friend(&friend);
+        places.save(store)
     }
 
     // --- Позиция ----------------------------------------------------------
@@ -658,6 +714,7 @@ impl StayaCore {
             store,
             account,
             friends,
+            places,
             ..
         } = &mut *g;
         let mut events = Vec::new();
@@ -673,6 +730,11 @@ impl StayaCore {
             let handled = friends.handle_location(store, slot.from, &slot.data.0)?;
             events.extend(handled.events.into_iter().map(CoreEvent::from));
         }
+        let mut next = places.clone();
+        let transitions = next.apply(&events, now);
+        next.save(store)?;
+        *places = next;
+        events.extend(transitions);
         let ack_json = if acks.is_empty() {
             None
         } else {
