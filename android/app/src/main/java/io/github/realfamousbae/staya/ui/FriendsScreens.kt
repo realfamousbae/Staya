@@ -289,6 +289,7 @@ private fun SettingsScreen(core: StayaCore, nick: String, server: String) {
     DarkScreen("настройки", onBack = ::home) {
         Message()
         SharingCard(core)
+        BatterySharingSetting(core)
         SectionTitle("блокировка")
         val activity = androidx.activity.compose.LocalActivity.current
         val lock = io.github.realfamousbae.staya.secure.AppLock
@@ -511,4 +512,32 @@ private fun FriendCard(initial: FriendView, code: String) {
             dismissButton = { TextButton(onClick = { confirmRemove = false }) { Text("Отмена", color = Ink.ink) } },
         )
     }
+}
+
+@Composable
+private fun BatterySharingSetting(core: StayaCore) {
+    val context = LocalContext.current.applicationContext
+    var enabled by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf(false) }
+    val main = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
+    LaunchedEffect(core) {
+        io.github.realfamousbae.staya.net.Net.worker.execute {
+            val result = runCatching { core.batterySharing() }
+            main.post { enabled = result.getOrDefault(false); error = result.isFailure; busy = false }
+        }
+    }
+    ListRow("Делиться зарядом", if (enabled) "Включено — только вместе с позицией" else "Выключено", enabled = !busy) {
+        busy = true
+        val desired = !enabled
+        io.github.realfamousbae.staya.net.Net.worker.execute {
+            val result = runCatching {
+                core.setBatterySharing(desired)
+                io.github.realfamousbae.staya.location.DeviceBattery.refresh(context, core)
+                LocationShare.resend(core)
+            }
+            main.post { if (result.isSuccess) enabled = desired; error = result.isFailure; busy = false }
+        }
+    }
+    if (error) Text("Не удалось изменить передачу заряда. Попробуй ещё раз.", color = Ink.mist)
 }

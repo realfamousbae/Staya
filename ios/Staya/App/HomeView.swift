@@ -233,6 +233,7 @@ private struct ScreenSheet: View {
             DarkScreen(title: "настройки", onBack: { dismiss() }) {
                 if let message = model.message { MessageCard(message) { model.message = nil } }
                 SharingSection(core: core)
+                BatterySharingSetting(core: core)
                 SectionTitle("блокировка")
                 AppLockSetting()
                 SectionTitle("аккаунт")
@@ -418,6 +419,39 @@ private struct AppLockSetting: View {
             }
             .disabled(lock.busy)
             if let message = lock.message { Text(message).font(.footnote).foregroundStyle(Ink.mist) }
+        }
+    }
+}
+
+private struct BatterySharingSetting: View {
+    let core: StayaCore
+    @State private var enabled = false
+    @State private var busy = true
+    @State private var failed = false
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ListRow("Делиться зарядом", enabled ? "Включено — только вместе с позицией" : "Выключено", enabled: !busy) {
+                busy = true
+                let desired = !enabled
+                Task {
+                    do {
+                        try await StayaNet.shared.queue.run {
+                            try core.setBatterySharing(enabled: desired)
+                            try await DeviceBattery.refresh(core: core)
+                        }
+                        enabled = desired
+                        failed = false
+                        await LocationEngine.resend(core: core)
+                    } catch { failed = true }
+                    busy = false
+                }
+            }
+            if failed { Text("Не удалось изменить передачу заряда. Попробуй ещё раз.").font(.footnote).foregroundStyle(Ink.mist) }
+        }
+        .task {
+            do { enabled = try await StayaNet.shared.queue.run { try core.batterySharing() } }
+            catch { failed = true }
+            busy = false
         }
     }
 }

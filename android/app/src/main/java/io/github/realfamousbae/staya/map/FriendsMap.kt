@@ -221,12 +221,13 @@ private fun updateFriends(density: Float, style: Style, icons: MutableMap<String
 fun locationStatus(f: FriendView, now: Long): String? {
     val loc = f.location ?: return null
     val age = MapMath.ageLabel(now, loc.timestamp)
-    return when (loc.kind) {
+    val status = when (loc.kind) {
         LocationKind.EXACT -> age
         LocationKind.APPROX -> "примерно · $age"
         LocationKind.FROZEN -> "позиция заморожена · $age"
         LocationKind.HIDDEN -> "скрыл(а) позицию"
     }
+    return status + (loc.batteryPercent?.let { " · $it%" + if (loc.charging) " ⚡" else "" } ?: "")
 }
 
 private const val AVATAR_DP = 48

@@ -461,3 +461,49 @@ fn packet_before_friend_accept_is_held_and_then_shown() {
     assert!(last_location(&events, alice.id()).is_some());
     assert_eq!(bob.friends.held_packet_count(), 0);
 }
+
+#[test]
+fn battery_is_opt_in_latest_only_and_withheld_for_hidden_and_frozen() {
+    let (mut alice, mut bob, mut server) = setup();
+    alice.friends.set_device_battery(Some(64), true).unwrap();
+    send(&mut alice, &mut server, Some(HOME), T0);
+    let events = bob.fetch(&mut server, T0);
+    assert_eq!(last_location(&events, alice.id()).unwrap().battery, None);
+    alice
+        .friends
+        .set_battery_sharing(&alice.store, true)
+        .unwrap();
+    send(&mut alice, &mut server, Some(at(T0 + 1)), T0 + 1);
+    let events = bob.fetch(&mut server, T0 + 1);
+    assert_eq!(
+        last_location(&events, alice.id()).unwrap().battery,
+        Some(staya_proto::location::Battery {
+            percent: 64,
+            charging: true
+        })
+    );
+    alice
+        .friends
+        .set_precision(&alice.store, &bob.id(), Precision::Hidden)
+        .unwrap();
+    send(&mut alice, &mut server, None, T0 + 2);
+    let events = bob.fetch(&mut server, T0 + 2);
+    assert_eq!(last_location(&events, alice.id()).unwrap().battery, None);
+    alice
+        .friends
+        .set_precision(&alice.store, &bob.id(), Precision::Exact)
+        .unwrap();
+    alice.friends.freeze_here(&alice.store).unwrap();
+    send(&mut alice, &mut server, None, T0 + 3);
+    let events = bob.fetch(&mut server, T0 + 3);
+    assert_eq!(last_location(&events, alice.id()).unwrap().battery, None);
+    alice.friends.set_frozen(&alice.store, None).unwrap();
+    alice
+        .friends
+        .set_battery_sharing(&alice.store, false)
+        .unwrap();
+    send(&mut alice, &mut server, Some(at(T0 + 4)), T0 + 4);
+    let events = bob.fetch(&mut server, T0 + 4);
+    assert_eq!(last_location(&events, alice.id()).unwrap().battery, None);
+    assert!(!Friends::load(&alice.store).unwrap().battery_sharing());
+}

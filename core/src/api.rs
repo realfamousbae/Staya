@@ -135,6 +135,8 @@ pub struct FriendLocation {
     pub accuracy_m: u16,
     /// Время замера (только для показа, §7.5).
     pub timestamp: i64,
+    pub battery_percent: Option<u8>,
+    pub charging: bool,
 }
 
 impl std::fmt::Debug for FriendLocation {
@@ -161,6 +163,8 @@ impl From<LocationPayload> for FriendLocation {
             lon_e7: p.lon_e7,
             accuracy_m: p.accuracy_m,
             timestamp: p.timestamp,
+            battery_percent: p.battery.map(|b| b.percent),
+            charging: p.battery.is_some_and(|b| b.charging),
         }
     }
 }
@@ -297,6 +301,21 @@ impl StayaCore {
     }
 
     // --- Друзья -----------------------------------------------------------
+
+    /// Whether the user opted into E2E battery sharing.
+    pub fn battery_sharing(&self) -> Result<bool, CoreError> {
+        Ok(self.lock()?.friends.battery_sharing())
+    }
+
+    pub fn set_battery_sharing(&self, enabled: bool) -> Result<(), CoreError> {
+        let mut g = self.lock()?;
+        let Inner { store, friends, .. } = &mut *g;
+        friends.set_battery_sharing(store, enabled)
+    }
+
+    pub fn set_device_battery(&self, percent: Option<u8>, charging: bool) -> Result<(), CoreError> {
+        self.lock()?.friends.set_device_battery(percent, charging)
+    }
 
     /// Свой профиль; пустой ник — онбординг не завершён.
     pub fn my_profile(&self) -> Result<MyProfile, CoreError> {

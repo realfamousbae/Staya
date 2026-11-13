@@ -32,6 +32,12 @@ impl TryFrom<u8> for LocationKind {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Battery {
+    pub percent: u8,
+    pub charging: bool,
+}
+
 /// Позиция в пакете. Координаты — градусы × 10⁷.
 ///
 /// `Debug` не печатает координаты: они не должны попадать в логи.
@@ -42,6 +48,7 @@ pub struct LocationPayload {
     pub lon_e7: i32,
     pub accuracy_m: u16,
     pub timestamp: i64,
+    pub battery: Option<Battery>,
 }
 
 impl fmt::Debug for LocationPayload {
@@ -66,6 +73,7 @@ impl LocationPayload {
             lon_e7: 0,
             accuracy_m: 0,
             timestamp,
+            battery: None,
         }
     }
 
@@ -78,7 +86,11 @@ impl LocationPayload {
         out[6..10].copy_from_slice(&self.lon_e7.to_be_bytes());
         out[10..12].copy_from_slice(&self.accuracy_m.to_be_bytes());
         out[12..20].copy_from_slice(&self.timestamp.to_be_bytes());
-        // 20..22 — flags = 0, 22..48 — резерв = 0.
+        if let Some(battery) = self.battery {
+            let flags: u16 = 1 | if battery.charging { 2 } else { 0 };
+            out[20..22].copy_from_slice(&flags.to_be_bytes());
+            out[22] = battery.percent;
+        }
         Ok(out)
     }
 
@@ -95,19 +107,36 @@ impl LocationPayload {
             return Err(ProtoError::Version(version));
         }
         let kind = LocationKind::try_from(r.u8()?)?;
-        let payload = Self {
+        let mut payload = Self {
             kind,
             lat_e7: r.i32()?,
             lon_e7: r.i32()?,
             accuracy_m: r.u16()?,
             timestamp: r.i64()?,
+            battery: None,
         };
-        // flags и резерв при приёме игнорируются (§7.1).
+        let flags = r.u16()?;
+        let percent = r.u8()?;
+        if flags & 1 != 0
+            && percent <= 100
+            && matches!(kind, LocationKind::Exact | LocationKind::Approx)
+        {
+            payload.battery = Some(Battery {
+                percent,
+                charging: flags & 2 != 0,
+            });
+        }
         payload.validate()?;
         Ok(payload)
     }
 
     fn validate(&self) -> Result<(), ProtoError> {
+        if let Some(battery) = self.battery
+            && (battery.percent > 100
+                || matches!(self.kind, LocationKind::Hidden | LocationKind::Frozen))
+        {
+            return Err(ProtoError::Invalid("battery"));
+        }
         if !(-LAT_MAX_E7..=LAT_MAX_E7).contains(&self.lat_e7) {
             return Err(ProtoError::Invalid("latitude"));
         }
@@ -171,7 +200,7 @@ mod tests {
             acc: u16,
             ts: i64,
         ) {
-            let p = LocationPayload { kind, lat_e7: lat, lon_e7: lon, accuracy_m: acc, timestamp: ts };
+            let p = LocationPayload { battery: None, kind, lat_e7: lat, lon_e7: lon, accuracy_m: acc, timestamp: ts };
             let bytes = p.encode().unwrap();
             prop_assert_eq!(bytes.len(), LOCATION_PLAINTEXT_LEN);
             prop_assert_eq!(LocationPayload::decode(&bytes).unwrap(), p);
@@ -202,6 +231,7 @@ mod tests {
         let bytes = LocationPayload::hidden(1).encode().unwrap();
         assert_eq!(&bytes[2..10], &[0; 8]);
         let bad = LocationPayload {
+            battery: None,
             lat_e7: 1,
             ..LocationPayload::hidden(1)
         };
@@ -224,6 +254,7 @@ mod tests {
     #[test]
     fn debug_redacts_coordinates() {
         let p = LocationPayload {
+            battery: None,
             kind: LocationKind::Exact,
             lat_e7: 557_558_000,
             lon_e7: 376_173_000,
@@ -240,5 +271,49 @@ mod tests {
         // Москва, ~55,75° с. ш.
         let (_, _, acc) = snap_to_grid(557_558_000, 376_173_000);
         assert!((700..=900).contains(&acc), "half diagonal {acc} m");
+    }
+}
+
+#[cfg(test)]
+mod battery_tests {
+    use super::*;
+
+    #[test]
+    fn optional_battery_preserves_packet_size_and_legacy_unknown_semantics() {
+        let p = LocationPayload {
+            kind: LocationKind::Exact,
+            lat_e7: 10,
+            lon_e7: 20,
+            accuracy_m: 3,
+            timestamp: 7,
+            battery: Some(Battery {
+                percent: 0,
+                charging: true,
+            }),
+        };
+        let mut bytes = p.encode().unwrap();
+        assert_eq!(bytes.len(), 48);
+        assert_eq!(LocationPayload::decode(&bytes).unwrap(), p);
+        bytes[20..].fill(0); // Old senders do not transmit battery, not a zero reading.
+        assert_eq!(LocationPayload::decode(&bytes).unwrap().battery, None);
+        bytes[21] = 1;
+        bytes[22] = 255; // A bad optional field must not destroy valid coordinates.
+        let decoded = LocationPayload::decode(&bytes).unwrap();
+        assert_eq!(decoded.lat_e7, p.lat_e7);
+        assert_eq!(decoded.battery, None);
+    }
+
+    #[test]
+    fn hidden_telemetry_is_never_exposed() {
+        let mut bytes = LocationPayload::hidden(7).encode().unwrap();
+        bytes[21] = 3;
+        bytes[22] = 85;
+        assert_eq!(LocationPayload::decode(&bytes).unwrap().battery, None);
+        let mut hidden = LocationPayload::hidden(7);
+        hidden.battery = Some(Battery {
+            percent: 85,
+            charging: true,
+        });
+        assert!(hidden.encode().is_err());
     }
 }

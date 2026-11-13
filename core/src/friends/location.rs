@@ -52,6 +52,31 @@ pub struct Sharing {
 }
 
 impl Friends {
+    pub fn battery_sharing(&self) -> bool {
+        self.battery_sharing
+    }
+
+    pub fn set_battery_sharing(&mut self, store: &Store, enabled: bool) -> Result<(), CoreError> {
+        self.battery_sharing = enabled;
+        if !enabled {
+            self.device_battery = None;
+        }
+        self.save(store)
+    }
+
+    pub fn set_device_battery(
+        &mut self,
+        percent: Option<u8>,
+        charging: bool,
+    ) -> Result<(), CoreError> {
+        if percent.is_some_and(|p| p > 100) {
+            return Err(CoreError::Invalid("battery percentage"));
+        }
+        self.device_battery =
+            percent.map(|percent| staya_proto::location::Battery { percent, charging });
+        Ok(())
+    }
+
     pub fn sharing(&self) -> Sharing {
         self.sharing
     }
@@ -117,7 +142,12 @@ impl Friends {
             .filter(|(_, f)| f.state == FriendState::Active)
         {
             let to = AccountId(*id);
-            let payload = payload_for(friend.precision, sharing, location, now);
+            let mut payload = payload_for(friend.precision, sharing, location, now);
+            if self.battery_sharing
+                && matches!(payload.kind, LocationKind::Exact | LocationKind::Approx)
+            {
+                payload.battery = self.device_battery;
+            }
             if let Some(share) = rotate_if_due(friend, to, now)? {
                 self.outbox.push(share);
             }
@@ -332,6 +362,7 @@ fn payload_for(
         Precision::Exact | Precision::Hidden => (loc.lat_e7, loc.lon_e7, loc.accuracy_m, kind),
     };
     LocationPayload {
+        battery: None,
         kind,
         lat_e7,
         lon_e7,
