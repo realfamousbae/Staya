@@ -1,53 +1,8 @@
-# Caddy на VPS (docs/server.md). Access-логов нет: директивы `log` здесь не должно
-# быть — IP клиентов не пишем. ACME email не указываем: репозиторий публичный.
+# Общий прокси: конфигурации проектов независимы, access-логи выключены.
 {
-	acme_ca {$ACME_CA}
-	servers {
-		# Только TCP: туннели плохо переносят QUIC, а ufw открывает лишь 443/tcp.
-		protocols h1 h2
-	}
+    acme_ca {$ACME_CA}
+    servers {
+        protocols h1 h2
+    }
 }
-
-{$STAYA_DOMAIN} {
-	tls {
-		protocols tls1.3
-		# Ключ не меняется при продлении сертификата: его отпечаток закреплён в
-		# приложениях и приглашениях (protocol §5.3). Запасной ключ хранится вне
-		# сервера; смена ключа — docs/server.md, «Закрепление ключа».
-		reuse_private_keys
-	}
-
-	handle /health {
-		respond "ok"
-	}
-
-	# Ответ в 64 КБ: проверка, что большие ответы доходят через VPN (MTU).
-	handle /mtu-test {
-		root * /srv/www
-		rewrite * /mtu-64k.bin
-		file_server
-	}
-
-	# Сервер Staya: HTTP API и WebSocket (/v1/ws). Caddy дописывает адрес клиента
-	# в X-Forwarded-For — сервер берёт его только для лимитов, в памяти.
-	handle /v1/* {
-		reverse_proxy 127.0.0.1:8082
-	}
-
-	# Карта (задача 3.9): тайлы через go-pmtiles, стили, шрифты и спрайты — файлы.
-	# Какие участки карты смотрит клиент, видит только этот сервер; логов нет.
-	handle_path /tiles/* {
-		header Cache-Control "public, max-age=86400"
-		reverse_proxy 127.0.0.1:8083
-	}
-
-	handle_path /map/* {
-		header Cache-Control "public, max-age=3600"
-		root * /srv/map-root/www
-		file_server
-	}
-
-	handle {
-		respond 404
-	}
-}
+import sites/*.caddy

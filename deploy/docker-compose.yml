@@ -2,35 +2,15 @@
 name: staya
 
 services:
-  caddy:
-    # 2-alpine на 03.10.2026
-    image: caddy:2-alpine@sha256:881bbc60f9986d5ab8e7cfd6cf7e4ef3c9c0439fef2429d035d065577882f028
-    # Сеть хоста: только Caddy слушает 80/443, а net.ipv4.tcp_mtu_probing хоста
-    # действует и на TLS (в отдельном namespace контейнера он был бы выключен,
-    # и клиенты за VPN зависали бы на большом ServerHello).
-    network_mode: host
-    restart: unless-stopped
-    environment:
-      # Имя сервера — только в .env на сервере (deploy.sh записывает его туда).
-      STAYA_DOMAIN: ${STAYA_DOMAIN:?STAYA_DOMAIN must be set in .env}
-      # По умолчанию тестовый CA Let's Encrypt; боевой — в .env на сервере.
-      ACME_CA: ${ACME_CA:-https://acme-staging-v02.api.letsencrypt.org/directory}
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./www:/srv/www:ro
-      # Стили, шрифты и спрайты карты (deploy/update-map.sh). Монтируется родитель:
-      # update-map.sh подменяет www целиком, а смонтированный каталог Docker
-      # держал бы по старому inode.
-      - ./map:/srv/map-root:ro
-      # Сертификаты и ключи переживают передеплой — иначе их выпускали бы заново.
-      - caddy_data:/data
-      - caddy_config:/config
-
   # База сервера: только во внутренней сети, наружу и на хост не публикуется.
   postgres:
+    mem_limit: ${POSTGRES_MEMORY_LIMIT:-384m}
     # 18-alpine на 04.10.2026
     image: postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
     # POSTGRES_PASSWORD — в postgres.env (создаёт setup-server.sh, права 600).
     env_file: ./postgres.env
     environment:
@@ -61,8 +41,12 @@ services:
     security_opt: ["no-new-privileges:true"]
 
   server:
-    image: ghcr.io/realfamousbae/staya-server:${SERVER_TAG:-main}
+    mem_limit: ${SERVER_MEMORY_LIMIT:-512m}
+    image: ghcr.io/realfamousbae/staya-server:${SERVER_TAG:?set SERVER_TAG to a tested commit tag}
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
     depends_on:
       postgres:
         condition: service_healthy
@@ -82,9 +66,13 @@ services:
 
   # Тайлы карты региона из вырезки Protomaps (deploy/update-map.sh).
   tiles:
+    mem_limit: ${TILES_MEMORY_LIMIT:-256m}
     # go-pmtiles v1.31.2
     image: protomaps/go-pmtiles:v1.31.2@sha256:06574f01f55a78f78f887bc7ebf729a5c093c0d6e17d9876300cfcb0758b59d3
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
     command:
       - serve
       - /tiles
@@ -102,6 +90,4 @@ networks:
   backend: {}
 
 volumes:
-  caddy_data: {}
-  caddy_config: {}
   postgres_data: {}

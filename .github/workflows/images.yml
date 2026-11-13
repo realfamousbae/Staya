@@ -52,6 +52,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           echo "$GH_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-          docker push "$IMAGE:main"
+          if [ "$GITHUB_REF" = refs/heads/main ]; then docker push "$IMAGE:main"; fi
           docker push "$IMAGE:${GITHUB_SHA::12}"
           docker logout ghcr.io
