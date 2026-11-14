@@ -90,7 +90,12 @@ private val type = Typography(
 
 @Composable
 fun StayaTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = scheme, typography = type, content = content)
+    MaterialTheme(colorScheme = scheme, typography = type) {
+        androidx.compose.runtime.CompositionLocalProvider(
+            androidx.compose.material3.LocalContentColor provides Ink.paper,
+            content = content,
+        )
+    }
 }
 
 /** Круглая чёрная кнопка поверх карты. */
@@ -138,7 +143,11 @@ fun SoftButton(onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Bool
             .padding(horizontal = 20.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
-        content = content,
+        content = {
+            androidx.compose.runtime.CompositionLocalProvider(
+                androidx.compose.material3.LocalContentColor provides if (enabled) Ink.paper else Ink.mist,
+            ) { content() }
+        },
     )
 }
 

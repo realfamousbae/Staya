@@ -33,7 +33,7 @@ struct OnboardingView: View {
             Text("Показывает друзьям, где ты, — и никому больше. Координаты шифруются на телефоне, сервер их не видит.")
                 .foregroundStyle(Ink.mist)
 
-            SectionTitle("приглашение друга")
+            SectionTitle("Приглашение друга")
             Text("Рядом с другом — отсканируй QR из его Staya. Далеко — открой ссылку, которую он прислал, или вставь её сюда. Сервер и всё нужное для входа уже в приглашении.")
                 .font(.footnote).foregroundStyle(Ink.mist)
             if QrScanner.isAvailable {
@@ -80,7 +80,7 @@ struct OnboardingView: View {
                     .font(.footnote).foregroundStyle(Ink.mist)
             }
 
-            SectionTitle("профиль")
+            SectionTitle("Профиль")
             DarkField(placeholder: "Ник", text: $nick)
             if nickTooLong {
                 Text("Слишком длинный ник").font(.footnote).foregroundStyle(Ink.danger)

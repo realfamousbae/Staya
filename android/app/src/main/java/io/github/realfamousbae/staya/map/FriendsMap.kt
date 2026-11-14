@@ -61,6 +61,7 @@ class MapFocus(val friendId: String?, val nonce: Long = System.nanoTime())
  */
 @Composable
 fun FriendsMap(core: StayaCore, host: String, friends: List<FriendView>, focus: MapFocus?, modifier: Modifier = Modifier, onPickPlace: ((Int, Int) -> Unit)? = null, pickedPlace: Pair<Int, Int>? = null) {
+    val own = rememberOwnPosition()
     val pick by androidx.compose.runtime.rememberUpdatedState(onPickPlace)
     val context = LocalContext.current
     val dark = isSystemInDarkTheme()
@@ -144,6 +145,34 @@ fun FriendsMap(core: StayaCore, host: String, friends: List<FriendView>, focus: 
         s.getSourceAs<GeoJsonSource>(sourceId)?.setGeoJson(FeatureCollection.fromFeatures(features))
     }
 
+    LaunchedEffect(style, own) {
+        val s = style ?: return@LaunchedEffect
+        if (s.getSource("staya-own") == null) {
+            s.addSource(GeoJsonSource("staya-own"))
+            s.addLayer(org.maplibre.android.style.layers.CircleLayer("staya-own-dot", "staya-own").withProperties(
+                PropertyFactory.circleRadius(9f), PropertyFactory.circleColor("#9BD0FF"),
+                PropertyFactory.circleStrokeColor("#FFFFFF"), PropertyFactory.circleStrokeWidth(3f),
+            ))
+            s.addLayer(SymbolLayer("staya-own-label", "staya-own").withProperties(
+                PropertyFactory.textField("Вы"), PropertyFactory.textColor("#FFFFFF"),
+                PropertyFactory.textHaloColor("#0F0F12"), PropertyFactory.textHaloWidth(2f),
+                PropertyFactory.textOffset(arrayOf(0f, 1.5f)), PropertyFactory.textAllowOverlap(true),
+            ))
+            s.addSource(GeoJsonSource("staya-own-accuracy"))
+            s.addLayer(FillLayer("staya-own-accuracy-fill", "staya-own-accuracy").withProperties(
+                PropertyFactory.fillColor("#9BD0FF"), PropertyFactory.fillOpacity(0.12f),
+            ))
+        }
+        val points = own?.let { listOf(Feature.fromGeometry(Point.fromLngLat(it.longitude, it.latitude))) }.orEmpty()
+        s.getSourceAs<GeoJsonSource>("staya-own")?.setGeoJson(FeatureCollection.fromFeatures(points))
+        val rings = own?.let { fix ->
+            val ring = MapMath.accuracyRing((fix.latitude * 1e7).toInt(), (fix.longitude * 1e7).toInt(), (fix.accuracyM ?: 0f).toDouble())
+                .map { Point.fromLngLat(it[0], it[1]) }
+            listOf(Feature.fromGeometry(Polygon.fromLngLats(listOf(ring))))
+        }.orEmpty()
+        s.getSourceAs<GeoJsonSource>("staya-own-accuracy")?.setGeoJson(FeatureCollection.fromFeatures(rings))
+    }
+
     // Бейджи «N мин» устаревают: обновляем раз в минуту, пока карта на экране.
     LaunchedEffect(Unit) {
         while (true) {
@@ -171,7 +200,7 @@ fun FriendsMap(core: StayaCore, host: String, friends: List<FriendView>, focus: 
         val f = focus ?: return@LaunchedEffect
         val m = map ?: return@LaunchedEffect
         if (f.friendId == null) {
-            fitAll(m, friends, animate = true)
+            fitAll(m, friends, animate = true, own = own)
             return@LaunchedEffect
         }
         val loc = friends.firstOrNull { it.accountId == f.friendId }?.location ?: return@LaunchedEffect
@@ -337,13 +366,14 @@ private fun markerBitmap(f: FriendView, badge: String, fresh: Boolean, density: 
 private val boundsWorker = Executors.newSingleThreadExecutor()
 
 /** Все видимые друзья в кадре; одного — крупно. `false` — показывать было некого. */
-private fun fitAll(map: MapLibreMap, friends: List<FriendView>, animate: Boolean): Boolean {
+private fun fitAll(map: MapLibreMap, friends: List<FriendView>, animate: Boolean, own: io.github.realfamousbae.staya.location.Fix? = null): Boolean {
     val visible = friends.mapNotNull { it.location }.filter { it.kind != LocationKind.HIDDEN }
+    val coords = visible.map { LatLng(it.latE7 / 1e7, it.lonE7 / 1e7) } + listOfNotNull(own?.let { LatLng(it.latitude, it.longitude) })
     val update = when {
-        visible.size == 1 -> CameraUpdateFactory.newLatLngZoom(LatLng(visible[0].latE7 / 1e7, visible[0].lonE7 / 1e7), 14.0)
-        visible.size > 1 -> {
+        coords.size == 1 -> CameraUpdateFactory.newLatLngZoom(coords[0], 14.0)
+        coords.size > 1 -> {
             val bounds = LatLngBounds.Builder()
-            visible.forEach { bounds.include(LatLng(it.latE7 / 1e7, it.lonE7 / 1e7)) }
+            coords.forEach { bounds.include(it) }
             CameraUpdateFactory.newLatLngBounds(bounds.build(), 160)
         }
         else -> return false

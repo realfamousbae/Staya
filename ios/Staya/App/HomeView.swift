@@ -32,7 +32,7 @@ struct HomeView: View {
                 // Заголовок-состояние: главное, что должен видеть владелец, — виден ли он сейчас.
                 Button { model.screen = .settings } label: {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(!engine.enabled ? "позиция скрыта" : frozen ? "заморожено здесь" : "делюсь позицией")
+                        Text(!engine.enabled ? "Позиция скрыта" : frozen ? "Заморожено здесь" : "Делюсь позицией")
                             .font(Ink.display)
                         Text(subtitle).font(.subheadline)
                     }
@@ -65,7 +65,7 @@ struct HomeView: View {
                 RoundButton(system: "location.fill", label: "Показать всех") { focus = MapFocus(friendId: nil) }
                 RoundButton(system: "plus", label: "Добавить друга") { addSheet = true }
             }
-            .padding(.bottom, 24)
+            .padding(.bottom, 8)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         }
         .toolbar(.hidden, for: .navigationBar)
@@ -133,7 +133,7 @@ private struct FriendsSheet: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 4) {
-                Text("друзья").font(Ink.title).foregroundStyle(Ink.paper).padding(.bottom, 8)
+                Text("Друзья").font(Ink.title).foregroundStyle(Ink.paper).padding(.bottom, 8)
                 if model.friends.isEmpty {
                     Text("Пока никого. Покажи QR-код другу рядом или отправь ссылку.").foregroundStyle(Ink.mist)
                     Pill(text: "Показать мой QR-код") { model.invite(.qr) }.padding(.top, 12)
@@ -186,7 +186,7 @@ private struct AddSheet: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 4) {
-                Text("добавить друга").font(Ink.title).foregroundStyle(Ink.paper).padding(.bottom, 8)
+                Text("Добавить друга").font(Ink.title).foregroundStyle(Ink.paper).padding(.bottom, 8)
                 Pill(text: "Показать мой QR-код") { close(); model.invite(.qr) }
                 Spacer().frame(height: 8)
                 ListRow("Отправить ссылку", "Действует сутки, откроется из мессенджера") { close(); model.invite(.link) }
@@ -230,16 +230,16 @@ private struct ScreenSheet: View {
     private var content: some View {
         switch screen {
         case .settings:
-            DarkScreen(title: "настройки", onBack: { dismiss() }) {
+            DarkScreen(title: "Настройки", onBack: { dismiss() }) {
                 if let message = model.message { MessageCard(message) { model.message = nil } }
                 SharingSection(core: core)
                 BatterySharingSetting(core: core)
                 StatusSetting(core: core)
                 LocationRequestSetting(core: core)
                 PlacesSetting(core: core)
-                SectionTitle("блокировка")
+                SectionTitle("Блокировка")
                 AppLockSetting()
-                SectionTitle("аккаунт")
+                SectionTitle("Аккаунт")
                 ListRow("Ник", nick)
                 ListRow("Сервер", server)
                 Text("Координаты шифруются на телефоне — сервер видит только зашифрованные пакеты.")
@@ -248,7 +248,7 @@ private struct ScreenSheet: View {
         case .showQr(let uri, let expiresAt):
             ShowQrView(uri: uri, expiresAt: expiresAt, onBack: { dismiss() })
         case .shareLink(let uri):
-            DarkScreen(title: "ссылка-приглашение", onBack: { dismiss() }) {
+            DarkScreen(title: "Ссылка-приглашение", onBack: { dismiss() }) {
                 Text("Ссылка действует 24 часа, сработает один раз и откроется прямо из мессенджера. В ней адрес сервера и код регистрации — другу ничего вводить не нужно.")
                     .foregroundStyle(Ink.paper)
                 Text("Если друг ответит, а у тебя выключено «Делиться позицией», открой Staya в течение суток. Добавленный по ссылке друг будет «не проверен», пока вы не сверите код безопасности.")
@@ -274,7 +274,7 @@ private struct ScreenSheet: View {
                 }
             }
         case .confirm(let uri, let info, let scanned):
-            DarkScreen(title: "добавить друга?", onBack: { dismiss() }) {
+            DarkScreen(title: "Добавить друга?", onBack: { dismiss() }) {
                 Text("Этот человек будет видеть, где ты, пока ты не скроешь позицию или не удалишь его.").foregroundStyle(Ink.paper)
                 ListRow("Сервер", info.server)
                 // Способ — как приглашение получено здесь, а не что написано в ссылке (§5.1).
@@ -286,7 +286,7 @@ private struct ScreenSheet: View {
                 Pill(text: "Добавить", enabled: !model.busy) { model.accept(uri, scanned: scanned) }
             }
         case .confirmServerCode(let uri, let host):
-            DarkScreen(title: "обновить код?", onBack: { dismiss() }) {
+            DarkScreen(title: "Обновить код?", onBack: { dismiss() }) {
                 Text("В ссылке новый код регистрации для сервера \(host). Он уйдёт в твои приглашения, чтобы друзьям не нужно было его вводить.")
                     .foregroundStyle(Ink.paper)
                 Text("Обновляй, только если ссылку прислал владелец сервера: с чужим кодом друзья не смогут зарегистрироваться.")
@@ -330,7 +330,7 @@ private struct FriendCard: View {
 
             if friend.active {
                 SoftButton(text: "Запросить свежую позицию") { model.requestLocation(friend) }.disabled(model.busy)
-                SectionTitle("что видит этот друг")
+                SectionTitle("Что видит этот друг")
                 ForEach([(Precision.exact, "Точную позицию"), (.approx, "Примерно (район ~1 км)"), (.hidden, "Ничего — «скрыл(а) позицию»")], id: \.1) { precision, title in
                     Button { model.setPrecision(friend, precision) } label: {
                         HStack(spacing: 12) {
@@ -346,7 +346,7 @@ private struct FriendCard: View {
                 }
             }
 
-            SectionTitle("код безопасности")
+            SectionTitle("Код безопасности")
             Text(code.chunks(of: 5).joined(separator: " "))
                 .font(.system(size: 17, weight: .medium, design: .monospaced))
                 .foregroundStyle(Ink.paper)
@@ -388,7 +388,7 @@ private struct ShowQrView: View {
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             let left = Int(expiresAt.timeIntervalSince(context.date))
-            DarkScreen(title: "мой QR-код", onBack: onBack) {
+            DarkScreen(title: "Мой QR-код", onBack: onBack) {
                 Text("Покажи код другу рядом. Добавленный по QR при встрече друг сразу считается проверенным.")
                     .foregroundStyle(Ink.mist)
                 ZStack {

@@ -217,7 +217,7 @@ object FriendsModel {
                 val queued = core.requestLocation(friend.accountId, System.currentTimeMillis() / 1000)
                 val sent = queued && sync != null && runCatching { sync?.flush() }.isSuccess
                 message = when {
-                    !queued -> "Запрос уже отправлялся. Дождись свежей позиции друга."
+                    !queued -> "Повторить запрос можно через 5 минут после предыдущего."
                     sent -> "Запрос передан на отправку. Ответ зависит от связи и настроек друга."
                     else -> "Запрос сохранён. Отправим при восстановлении связи."
                 }

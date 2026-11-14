@@ -11,6 +11,7 @@ import androidx.core.content.edit
 object LocationDiagnostics {
     private const val PREFS = "location-diagnostics"
 
+    const val REQUEST_AT = "request_at"
     const val FIX_AT = "fix_at"
     const val SENT_AT = "sent_at"
     const val SEND_ERROR_AT = "send_error_at"
@@ -22,6 +23,7 @@ object LocationDiagnostics {
     const val DROP = "drop"
 
     class Snapshot(
+        val requestAt: Long?,
         val fixAt: Long?,
         val sentAt: Long?,
         val sendError: String?,
@@ -56,6 +58,7 @@ object LocationDiagnostics {
         val p = prefs(context)
         fun at(key: String) = p.getLong(key, 0L).takeIf { it > 0 }
         return Snapshot(
+            at(REQUEST_AT),
             fixAt = at(FIX_AT),
             sentAt = at(SENT_AT),
             sendError = p.getString(SEND_ERROR, null),

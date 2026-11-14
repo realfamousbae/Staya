@@ -142,9 +142,9 @@ private fun FriendsHome(core: StayaCore, server: String) {
         ) {
             Text(
                 when {
-                    !sharing -> "позиция скрыта"
-                    frozen -> "заморожено здесь"
-                    else -> "делюсь позицией"
+                    !sharing -> "Позиция скрыта"
+                    frozen -> "Заморожено здесь"
+                    else -> "Делюсь позицией"
                 },
                 style = MaterialTheme.typography.displaySmall.copy(shadow = Shadow(halo, blurRadius = 12f)),
                 color = textColor,
@@ -179,7 +179,7 @@ private fun FriendsHome(core: StayaCore, server: String) {
         )
 
         Row(
-            modifier = Modifier.align(Alignment.BottomCenter).padding(insets).padding(bottom = 24.dp),
+            modifier = Modifier.align(Alignment.BottomCenter).padding(insets).padding(bottom = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             RoundButton(R.drawable.ic_people, "Друзья", { friendsSheet = true })
@@ -191,7 +191,7 @@ private fun FriendsHome(core: StayaCore, server: String) {
     if (friendsSheet) {
         ModalBottomSheet(onDismissRequest = { friendsSheet = false }, containerColor = Ink.ink2, contentColor = Ink.paper) {
             Column(modifier = Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("друзья", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(bottom = 8.dp))
+                Text("Друзья", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(bottom = 8.dp))
                 if (friends.isEmpty()) {
                     Text("Пока никого. Покажи QR-код другу рядом или отправь ссылку.", style = MaterialTheme.typography.bodyMedium, color = Ink.mist)
                     Spacer(Modifier.height(12.dp))
@@ -218,7 +218,7 @@ private fun FriendsHome(core: StayaCore, server: String) {
     if (addSheet) {
         ModalBottomSheet(onDismissRequest = { addSheet = false }, containerColor = Ink.ink2, contentColor = Ink.paper) {
             Column(modifier = Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("добавить друга", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(bottom = 8.dp))
+                Text("Добавить друга", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(bottom = 8.dp))
                 Pill("Показать мой QR-код", { addSheet = false; FriendsModel.invite(InviteMethod.QR) })
                 Spacer(Modifier.height(8.dp))
                 ListRow("Отправить ссылку", "Действует сутки, откроется из мессенджера") {
@@ -287,7 +287,7 @@ private fun FriendRow(f: FriendView, now: Long, onShow: () -> Unit, onMore: () -
 /** Настройки: передача, разрешения, профиль, диагностика. */
 @Composable
 private fun SettingsScreen(core: StayaCore, nick: String, server: String) {
-    DarkScreen("настройки", onBack = ::home) {
+    DarkScreen("Настройки", onBack = ::home) {
         Message()
         SharingCard(core)
         BatterySharingSetting(core)
@@ -295,12 +295,12 @@ private fun SettingsScreen(core: StayaCore, nick: String, server: String) {
         io.github.realfamousbae.staya.push.FcmSetting(core)
         LocationRequestSetting(core)
         ListRow("Места", "Локальные уведомления о приходе и уходе") { FriendsModel.screen = FriendsModel.Screen.Places }
-        SectionTitle("блокировка")
+        SectionTitle("Блокировка")
         val activity = androidx.activity.compose.LocalActivity.current
         val lock = io.github.realfamousbae.staya.secure.AppLock
         ListRow("Блокировка приложения", if (lock.enabled) "Включена — биометрия или код телефона" else "Выключена", enabled = !lock.busy) { activity?.let { lock.change(it) } }
         lock.message?.let { Text(it, color = Ink.mist) }
-        SectionTitle("аккаунт")
+        SectionTitle("Аккаунт")
         ListRow("Ник", nick)
         ListRow("Сервер", server)
         Text(
@@ -321,7 +321,7 @@ private fun ShowQr(uri: String, expiresAt: Long) {
         }
     }
     val bitmap = remember(uri) { Qr.bitmap(uri).asImageBitmap() }
-    DarkScreen("мой QR-код", onBack = ::home) {
+    DarkScreen("Мой QR-код", onBack = ::home) {
         Text("Покажи код другу рядом. Добавленный по QR при встрече друг сразу считается проверенным.", color = Ink.mist)
         Box(
             modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(Ink.paper).padding(20.dp),
@@ -351,7 +351,7 @@ private fun ShowQr(uri: String, expiresAt: Long) {
 @Composable
 private fun ShareLink(uri: String) {
     val context = LocalContext.current
-    DarkScreen("ссылка-приглашение", onBack = ::home) {
+    DarkScreen("Ссылка-приглашение", onBack = ::home) {
         Text(
             "Ссылка действует 24 часа, сработает один раз и откроется прямо из мессенджера. В ней адрес сервера " +
                 "и код регистрации — другу ничего вводить не нужно.",
@@ -396,7 +396,7 @@ private fun Scan() {
 
 @Composable
 private fun Confirm(s: FriendsModel.Screen.Confirm) {
-    DarkScreen("добавить друга?", onBack = ::home) {
+    DarkScreen("Добавить друга?", onBack = ::home) {
         Text("Этот человек будет видеть, где ты, пока ты не скроешь позицию или не удалишь его.", color = Ink.paper)
         ListRow("Сервер", s.info.server)
         Text(
@@ -416,7 +416,7 @@ private fun Confirm(s: FriendsModel.Screen.Confirm) {
 
 @Composable
 private fun ConfirmServerCode(s: FriendsModel.Screen.ConfirmServerCode) {
-    DarkScreen("обновить код?", onBack = ::home) {
+    DarkScreen("Обновить код?", onBack = ::home) {
         Text(
             "В ссылке новый код регистрации для сервера ${s.host}. Он уйдёт в твои приглашения, " +
                 "чтобы друзьям не нужно было его вводить.",
@@ -460,7 +460,7 @@ private fun FriendCard(initial: FriendView, code: String) {
 
         if (friend.active) {
             SoftButton(onClick = { FriendsModel.requestLocation(friend) }, enabled = !FriendsModel.busy) { Text("Запросить свежую позицию") }
-            SectionTitle("что видит этот друг")
+            SectionTitle("Что видит этот друг")
             listOf(
                 Precision.EXACT to "Точную позицию",
                 Precision.APPROX to "Примерно (район ~1 км)",
@@ -480,7 +480,7 @@ private fun FriendCard(initial: FriendView, code: String) {
             }
         }
 
-        SectionTitle("код безопасности")
+        SectionTitle("Код безопасности")
         Text(
             code.chunked(5).joinToString(" "),
             style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Medium),

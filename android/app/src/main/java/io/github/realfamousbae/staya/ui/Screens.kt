@@ -91,7 +91,7 @@ fun OnboardingScreen(core: StayaCore, accountId: String) {
     DarkScreen("staya", onBack = null) {
         Text("Показывает друзьям, где ты, — и никому больше. Координаты шифруются на телефоне, сервер их не видит.", color = Ink.mist)
 
-        SectionTitle("приглашение друга")
+        SectionTitle("Приглашение друга")
         Text(
             "Рядом с другом — отсканируй QR из его Staya. Далеко — открой ссылку, которую он прислал, " +
                 "или вставь её сюда. Сервер и всё нужное для входа уже в приглашении.",
@@ -171,7 +171,7 @@ fun OnboardingScreen(core: StayaCore, accountId: String) {
             )
         }
 
-        SectionTitle("профиль")
+        SectionTitle("Профиль")
         OutlinedTextField(
             value = nick,
             onValueChange = { nick = it },

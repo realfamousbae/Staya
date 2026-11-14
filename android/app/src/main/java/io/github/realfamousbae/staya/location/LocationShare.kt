@@ -23,6 +23,13 @@ object LocationShare {
     private const val KEY_ENABLED = "sharing"
 
     private val sender = LocationSender()
+    private var remoteRequestedAt: Long? = null
+
+    /** Called on Net.worker, after core consent and rate-limit checks. */
+    fun prepareRemoteRefresh(context: Context) {
+        remoteRequestedAt = System.currentTimeMillis()
+        LocationDiagnostics.mark(context, LocationDiagnostics.REQUEST_AT)
+    }
 
     fun isEnabled(context: Context): Boolean =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_ENABLED, false)
@@ -105,10 +112,19 @@ object LocationShare {
     /** Новый замер из сервиса. Ядро открывается и без экрана; если база ещё недоступна — пропуск. */
     fun onFix(context: Context, fix: Fix) {
         val app = context.applicationContext
-        LocationDiagnostics.mark(app, LocationDiagnostics.FIX_AT)
+        if (LocationPolicy.toCore(fix) != null && LocationPolicy.isFresh(fix, System.currentTimeMillis())) {
+            LocationDiagnostics.mark(app, LocationDiagnostics.FIX_AT)
+        }
         Net.worker.execute {
             if (!isEnabled(app)) return@execute
             val core = AppCore.openBlocking(app) ?: return@execute
+            remoteRequestedAt?.let { requested ->
+                if (System.currentTimeMillis() - requested > 60_000L) remoteRequestedAt = null
+                else if (fix.timeMs >= requested - 5_000L && LocationPolicy.toCore(fix) != null) {
+                    sender.reset()
+                    remoteRequestedAt = null
+                }
+            }
             val sync = Net.bind(core)?.second
             runCatching { DeviceBattery.refresh(app, core) }
             if (runCatching { sender.onFix(core, sync, fix) }.getOrDefault(false)) recordSent(app)
@@ -134,7 +150,9 @@ object LocationShare {
         Net.worker.execute {
             if (!isEnabled(app)) return@execute
             val core = AppCore.openBlocking(app) ?: return@execute
-            pollMailbox(app, core, Net.bind(core)?.second)
+            val sync = Net.bind(core)?.second
+            runCatching { sync?.flush() }
+            pollMailbox(app, core, sync)
         }
     }
 

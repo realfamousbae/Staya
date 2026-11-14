@@ -607,7 +607,7 @@ fn short_status_updates_persist_and_can_be_cleared() {
 #[test]
 fn fresh_location_requests_require_opt_in_and_respect_privacy_modes_and_expiry() {
     for mode in [
-        "off", "ghost", "frozen", "hidden", "stale", "future", "allowed",
+        "off", "ghost", "frozen", "hidden", "stale", "future", "allowed", "delayed",
     ] {
         let (mut alice, mut bob, mut server) = befriend(InviteMethod::Qr);
         if mode != "off" {
@@ -641,8 +641,9 @@ fn fresh_location_requests_require_opt_in_and_respect_privacy_modes_and_expiry()
                 .unwrap();
         }
         let (sent, received) = match mode {
-            "stale" => (T0, T0 + 1000),
+            "stale" => (T0, T0 + 1801),
             "future" => (T0 + 1000, T0),
+            "delayed" => (T0, T0 + 1800),
             _ => (T0 + 10, T0 + 11),
         };
         assert!(
@@ -657,7 +658,7 @@ fn fresh_location_requests_require_opt_in_and_respect_privacy_modes_and_expiry()
         assert_eq!(
             got.iter()
                 .any(|event| matches!(event, Event::LocationRequested { .. })),
-            mode == "allowed",
+            mode == "allowed" || mode == "delayed",
             "mode {mode}"
         );
     }
@@ -788,5 +789,28 @@ fn requests_from_multiple_friends_share_a_device_refresh_limit() {
         events(&bob.sync(&mut server, T0 + 430))
             .iter()
             .any(|e| matches!(e, Event::LocationRequested { .. }))
+    );
+}
+
+#[test]
+fn unanswered_location_request_can_be_retried_after_five_minutes() {
+    let (mut alice, bob, _) = befriend(InviteMethod::Qr);
+    assert!(
+        alice
+            .friends
+            .request_location(&alice.store, &bob.id(), T0)
+            .unwrap()
+    );
+    assert!(
+        !alice
+            .friends
+            .request_location(&alice.store, &bob.id(), T0 + 299)
+            .unwrap()
+    );
+    assert!(
+        alice
+            .friends
+            .request_location(&alice.store, &bob.id(), T0 + 300)
+            .unwrap()
     );
 }
