@@ -168,6 +168,6 @@ class LocationSender(private val clock: () -> Long = System::currentTimeMillis) 
     private fun queue(core: StayaCore, sync: CoreSync?, fix: Fix) {
         val location = LocationPolicy.toCore(fix) ?: return
         core.prepareLocationUpdate(location, clock() / 1000)
-        lastSendError = runCatching { sync?.flush() }.exceptionOrNull()?.javaClass?.simpleName
+        lastSendError = if (sync == null) "Нет соединения" else runCatching { sync.flush() }.exceptionOrNull()?.javaClass?.simpleName
     }
 }

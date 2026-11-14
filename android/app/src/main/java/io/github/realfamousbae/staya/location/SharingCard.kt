@@ -62,7 +62,7 @@ fun SharingCard(core: StayaCore) {
     val single = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { resumes++ }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SectionTitle("передача")
+        SectionTitle("Передача")
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
                 Text("Делиться позицией", style = MaterialTheme.typography.titleMedium)
@@ -188,6 +188,7 @@ private fun Diagnostics(resumes: Int) {
                 "Передача не запущена — открой приложение заново или проверь настройки ниже"
             },
         )
+        d.requestAt?.let { add("Запрос свежей позиции: ${ago(it)}") }
         add("Замер: ${ago(d.fixAt)} · отправка: ${ago(d.sentAt)}")
         if (d.sendError != null) add("Не удалось отправить: ${d.sendError} (${ago(d.sendErrorAt)}) — уйдёт при следующей попытке")
         d.watchdogAt?.let { add("Сторож проверял: ${ago(it)}") }

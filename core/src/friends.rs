@@ -541,13 +541,10 @@ impl Friends {
         if record.state != FriendState::Active {
             return Err(CoreError::UnknownFriend);
         }
-        if let Some(last) = record.last_request_sent {
-            let refreshed = record
-                .last_location
-                .is_some_and(|position| position.timestamp > last);
-            if now.saturating_sub(last) < 300 || !refreshed {
-                return Ok(false);
-            }
+        if let Some(last) = record.last_request_sent
+            && now.saturating_sub(last) < 300
+        {
+            return Ok(false);
         }
         let message = encrypt_control(
             record,
@@ -739,7 +736,7 @@ impl Friends {
             ControlMessage::LocationRequest { requested_at } => {
                 let fresh = requested_at >= 0
                     && requested_at <= now.saturating_add(30)
-                    && now.saturating_sub(requested_at) <= 300;
+                    && now.saturating_sub(requested_at) <= 1800;
                 let friend_ready = record
                     .last_request_received
                     .is_none_or(|last| now.saturating_sub(last) >= 300);

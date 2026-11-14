@@ -41,7 +41,7 @@ fun PlacesScreen(core: StayaCore, server: String) {
             main.post { places = result.getOrDefault(emptyList()); if (result.isFailure) message = "Не удалось прочитать места." }
         }
     }
-    DarkScreen("места", onBack = { FriendsModel.screen = FriendsModel.Screen.Settings }) {
+    DarkScreen("Места", onBack = { FriendsModel.screen = FriendsModel.Screen.Settings }) {
         Text("Места хранятся только на этом телефоне. Уведомления появятся, когда придёт свежая позиция друга.", color = Ink.mist)
         message?.let { Text(it, color = Ink.mist) }
         places.forEach { place ->
@@ -54,7 +54,7 @@ fun PlacesScreen(core: StayaCore, server: String) {
                 }
             }, enabled = !busy) { Text("Удалить место") }
         }
-        SectionTitle("новое место")
+        SectionTitle("Новое место")
         if (friends.isEmpty()) Text("Сначала добавь друга и дождись подтверждения.", color = Ink.mist)
         friends.forEach { f ->
             ListRow(f.nick ?: "Друг", if (friend == f.accountId) "Выбран" else "Выбрать друга", enabled = !busy) { friend = f.accountId }

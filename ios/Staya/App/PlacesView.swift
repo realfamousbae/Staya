@@ -15,14 +15,14 @@ struct PlacesView: View {
     @State private var message: String?
 
     var body: some View {
-        DarkScreen(title: "места", onBack: { dismiss() }) {
+        DarkScreen(title: "Места", onBack: { dismiss() }) {
             Text("Места хранятся только на этом телефоне. Уведомления появятся, когда придёт свежая позиция друга.").foregroundStyle(Ink.mist)
             if let message { Text(message).foregroundStyle(Ink.mist) }
             ForEach(places, id: \.id) { place in
                 ListRow(place.name, "\(friends.first { $0.accountId == place.friend }?.nick ?? "Друг") · \(place.radiusM) м")
                 Button("Удалить место", role: .destructive) { remove(place.id) }.disabled(busy)
             }
-            SectionTitle("новое место")
+            SectionTitle("Новое место")
             if friends.isEmpty { Text("Сначала добавь друга и дождись подтверждения.").foregroundStyle(Ink.mist) }
             ForEach(friends, id: \.accountId) { value in
                 ListRow(value.nick ?? "Друг", friend == value.accountId ? "Выбран" : "Выбрать друга", enabled: !busy) { friend = value.accountId }

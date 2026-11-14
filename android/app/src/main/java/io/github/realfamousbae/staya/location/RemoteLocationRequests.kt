@@ -10,6 +10,7 @@ object RemoteLocationRequests {
     fun handle(events: List<CoreEvent>) {
         if (events.none { it is CoreEvent.LocationRequested }) return
         val context = app ?: return
+        LocationShare.prepareRemoteRefresh(context)
         LocationShare.startService(context, fromBackground = true, tick = true)
     }
 }

@@ -118,7 +118,7 @@ class LocationPolicyTest {
                 assertFalse(sender.onFix(core, null, Fix(55.001, 37.0, 5f, now)))
                 assertTrue(sender.flushHeld(core, null))
                 assertFalse(sender.flushHeld(core, null))
-                assertNull(sender.lastSendError)
+                assertEquals("Нет соединения", sender.lastSendError) // Queued locally, not delivered.
             }
         } finally {
             dir.deleteRecursively()

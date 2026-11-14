@@ -58,11 +58,11 @@ struct ContentView: View {
         case .closed, .opening:
             spinner
         case .unavailable(let reason):
-            DarkScreen(title: "не удалось открыть данные") {
+            DarkScreen(title: "Не удалось открыть данные") {
                 Text(reason).foregroundStyle(Ink.mist)
             }
         case .broken(let reason):
-            DarkScreen(title: "данные повреждены") {
+            DarkScreen(title: "Данные повреждены") {
                 Text(reason).foregroundStyle(Ink.mist)
                 Pill(text: "Сбросить локальные данные") { core.reset() }
             }

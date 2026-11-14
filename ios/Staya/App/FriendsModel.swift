@@ -213,7 +213,7 @@ final class FriendsModel {
                     if queued, let sync { do { try await sync.flush(); sent = true } catch {} }
                     return (queued, sent)
                 }
-                if !result.0 { message = "Запрос уже отправлялся. Дождись свежей позиции друга." }
+                if !result.0 { message = "Повторить запрос можно через 5 минут после предыдущего." }
                 else if result.1 { message = "Запрос передан на отправку. Ответ зависит от связи и настроек друга." }
                 else { message = "Запрос сохранён. Отправим при восстановлении связи." }
             } catch { message = AppModel.describe(error) }

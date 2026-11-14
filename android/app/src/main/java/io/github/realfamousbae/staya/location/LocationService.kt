@@ -49,6 +49,9 @@ class LocationService : Service() {
     private var highPower = false
     private var lastMovingAt = 0L
     private var lastRefreshAt: Long? = null
+    private var fallback: Runnable? = null
+    private var gpsCancellation: android.os.CancellationSignal? = null
+    private var gpsListener: LocationListener? = null
     /** Первый замер после перехода в покой: от него считаем сдвиг. */
     private var restAnchor: Fix? = null
 
@@ -162,6 +165,29 @@ class LocationService : Service() {
         val now = System.currentTimeMillis()
         if (!force && !LocationPolicy.shouldRefresh(now, lastRefreshAt)) return
         lastRefreshAt = now
+        fallback?.let(handler::removeCallbacks)
+        val retry = Runnable {
+            if (LocationShare.isEnabled(this) && LocationShare.hasForegroundPermission(this) && lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+                runCatching {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        gpsCancellation?.cancel()
+                        val cancellation = android.os.CancellationSignal()
+                        gpsCancellation = cancellation
+                        lm.getCurrentLocation(LocationManager.GPS_PROVIDER, cancellation, mainExecutor) { it?.let(::onLocation) }
+                        handler.postDelayed({ cancellation.cancel() }, 30_000L)
+                    } else {
+                        val single = LocationListener { onLocation(it) }
+                        gpsListener?.let(lm::removeUpdates)
+                        gpsListener = single
+                        @Suppress("DEPRECATION")
+                        lm.requestSingleUpdate(LocationManager.GPS_PROVIDER, single, Looper.getMainLooper())
+                        handler.postDelayed({ lm.removeUpdates(single) }, 30_000L)
+                    }
+                }
+            }
+        }
+        fallback = retry
+        handler.postDelayed(retry, 30_000L)
         val provider = pickProvider(highPower)
         runCatching {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -205,6 +231,11 @@ class LocationService : Service() {
     }
 
     private fun onLocation(location: Location) {
+        if (!running || !LocationShare.isEnabled(this)) return
+        if (System.currentTimeMillis() - location.time <= LocationPolicy.MAX_FIX_AGE_MS) {
+            fallback?.let(handler::removeCallbacks)
+            fallback = null
+        }
         val now = System.currentTimeMillis()
         if (location.hasSpeed() && location.speed >= 0.5f) lastMovingAt = now
         val fix = Fix(location.latitude, location.longitude, if (location.hasAccuracy()) location.accuracy else null, location.time)
@@ -234,7 +265,9 @@ class LocationService : Service() {
 
     override fun onDestroy() {
         running = false
-        handler.removeCallbacks(stillCheck)
+        handler.removeCallbacksAndMessages(null)
+        gpsCancellation?.cancel()
+        gpsListener?.let(lm::removeUpdates)
         stopUpdates()
         super.onDestroy()
     }

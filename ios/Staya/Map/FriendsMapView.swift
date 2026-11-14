@@ -43,6 +43,8 @@ struct FriendsMapView: UIViewRepresentable {
         // Всегда со стилем своего сервера: без него MapLibre загрузил бы стиль по умолчанию из сети.
         let url = MapNetwork.shared.styleURL(dark: dark) ?? URL(string: "about:blank")!
         let view = MLNMapView(frame: .zero, styleURL: url)
+        view.showsUserLocation = true
+        view.userLocation?.title = "Вы"
         view.allowsRotating = false
         view.allowsTilting = false
         // Логотип движка не нужен; атрибуция данных карты (OpenStreetMap) обязательна —
@@ -57,6 +59,11 @@ struct FriendsMapView: UIViewRepresentable {
         context.coordinator.mapView = view
         context.coordinator.dark = dark
         return view
+    }
+
+    static func dismantleUIView(_ view: MLNMapView, coordinator: Coordinator) {
+        view.showsUserLocation = false
+        view.delegate = nil
     }
 
     func updateUIView(_ view: MLNMapView, context: Context) {
@@ -153,7 +160,38 @@ struct FriendsMapView: UIViewRepresentable {
 
             self.style = style
             refreshPick()
+            refreshOwn()
             refresh()
+        }
+
+        @objc(mapView:didUpdateUserLocation:)
+        func mapView(_ mapView: MLNMapView, didUpdate userLocation: MLNUserLocation?) {
+            userLocation?.title = "Вы"
+            refreshOwn()
+        }
+
+        func refreshOwn() {
+            guard let style else { return }
+            let id = "staya-own-label"
+            if style.source(withIdentifier: id) == nil {
+                let source = MLNShapeSource(identifier: id, shape: nil, options: nil)
+                style.addSource(source)
+                let label = MLNSymbolStyleLayer(identifier: id, source: source)
+                label.text = NSExpression(forConstantValue: "Вы")
+                label.textColor = NSExpression(forConstantValue: UIColor.white)
+                label.textHaloColor = NSExpression(forConstantValue: UIColor.black)
+                label.textHaloWidth = NSExpression(forConstantValue: 2)
+                label.textOffset = NSExpression(forConstantValue: NSValue(cgVector: CGVector(dx: 0, dy: 1.5)))
+                label.textAllowsOverlap = NSExpression(forConstantValue: true)
+                style.addLayer(label)
+            }
+            let point = mapView?.userLocation?.location.flatMap { location -> MLNPointFeature? in
+                guard abs(location.timestamp.timeIntervalSinceNow) <= 600 else { return nil }
+                let point = MLNPointFeature()
+                point.coordinate = location.coordinate
+                return point
+            }
+            (style.source(withIdentifier: id) as? MLNShapeSource)?.shape = point
         }
 
         private var visible: [(FriendView, FriendLocation)] {
@@ -205,9 +243,10 @@ struct FriendsMapView: UIViewRepresentable {
         @discardableResult
         private func fitAll(animated: Bool) -> Bool {
             guard let mapView else { return false }
-            let coords = visible.map {
+            var coords = visible.map {
                 CLLocationCoordinate2D(latitude: Double($0.1.latE7) / 1e7, longitude: Double($0.1.lonE7) / 1e7)
             }
+            if let own = mapView.userLocation?.location, abs(own.timestamp.timeIntervalSinceNow) <= 600 { coords.append(own.coordinate) }
             if coords.isEmpty { return false }
             if coords.count == 1 {
                 mapView.setCenter(coords[0], zoomLevel: 14, animated: animated)

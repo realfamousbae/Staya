@@ -13,7 +13,7 @@ struct SharingSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            SectionTitle("передача")
+            SectionTitle("Передача")
             toggleRow(
                 title: "Делиться позицией",
                 subtitle: engine.enabled ? "Друзья видят, где ты" : "Выключено — друзья видят «скрыл(а) позицию»",
@@ -23,6 +23,10 @@ struct SharingSection: View {
                 )
             )
             if engine.enabled {
+                if let time = engine.lastFixAt { note("Последний замер: \(time.formatted(date: .omitted, time: .standard))") }
+                if let time = engine.lastSendAt { note("Последняя отправка: \(time.formatted(date: .omitted, time: .standard))") }
+                if let time = engine.lastRequestAt { note("Запрос позиции: \(time.formatted(date: .omitted, time: .standard))") }
+                if let error = engine.lastError { note(error) }
                 toggleRow(
                     title: "Заморозить позицию здесь",
                     subtitle: freezeError
